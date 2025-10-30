@@ -72,7 +72,7 @@ version: '3.8'
 services:
   avahi:
     image: servercontainers/avahi
-    container_name: homefileserver-avahi
+    container_name: omnifileserver-avahi
     network_mode: host
     volumes:
       - ./config/avahi:/external/avahi
@@ -82,7 +82,7 @@ services:
 
   samba:
     image: servercontainers/samba
-    container_name: homefileserver-samba
+    container_name: omnifileserver-samba
     network_mode: host
     volumes:
       - ./shares:/shares
@@ -121,7 +121,7 @@ cat >> "$COMPOSE_FILE" << EOF
 
   netatalk:
     image: servercontainers/netatalk
-    container_name: homefileserver-netatalk
+    container_name: omnifileserver-netatalk
     network_mode: host
     volumes:
       - ./shares:/shares

@@ -301,7 +301,11 @@ init() {
     if ! "$SCRIPT_DIR/generate-compose.sh"; then
         error "Failed to generate docker-compose.yml"
     fi
-    success "✓ Configuration generated"
+    success "✓ Configuration generated at $SCRIPT_DIR/docker-compose.yml"
+    echo ""
+    echo "💡 Tip: To organize files by type, you can symlink the compose file:"
+    echo "   mkdir -p /opt/sw/docker-compose/omnifileserver"
+    echo "   ln -s $SCRIPT_DIR/docker-compose.yml /opt/sw/docker-compose/omnifileserver/"
     echo ""
 
     # Step 6: Start services
@@ -349,7 +353,15 @@ apply() {
         error "Failed to generate docker-compose.yml"
     fi
 
-    success "Generated docker-compose.yml"
+    success "Generated docker-compose.yml at $SCRIPT_DIR/docker-compose.yml"
+
+    # Show symlink tip on first run
+    if [[ ! -L "/opt/sw/docker-compose/omnifileserver/docker-compose.yml" ]] && [[ -d "/opt/sw/docker-compose" ]]; then
+        echo ""
+        echo "💡 Tip: To organize by file type, symlink the compose file:"
+        echo "   mkdir -p /opt/sw/docker-compose/omnifileserver"
+        echo "   ln -s $SCRIPT_DIR/docker-compose.yml /opt/sw/docker-compose/omnifileserver/"
+    fi
 
     # Ask if user wants to restart services
     echo ""

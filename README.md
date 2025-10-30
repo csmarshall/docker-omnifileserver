@@ -1,6 +1,6 @@
-# Home File Server (Docker)
+# Docker Omni File Server
 
-A containerized file server solution providing **SMB/CIFS** (Samba) and **AFP** (Netatalk) shares with automatic service discovery via **Avahi/mDNS**.
+Unified management for multiple file-serving protocols (SMB/CIFS and AFP) via Docker. One config, multiple daemons.
 
 ## Features
 
@@ -34,7 +34,7 @@ A containerized file server solution providing **SMB/CIFS** (Samba) and **AFP** 
 ## Directory Structure
 
 ```
-docker-homefileserver/
+docker-omnifileserver/
 ├── manage.sh              # Management script (add users, shares, apply changes)
 ├── generate-compose.sh    # Generates docker-compose.yml from config files
 ├── users.conf             # User definitions (without passwords)
@@ -50,6 +50,39 @@ docker-homefileserver/
 └── shares/                # Actual shared data
     ├── shared/           # Example: Read-write shared folder
     └── media/            # Example: Read-only media library
+```
+
+### Alternative Organization (Optional)
+
+If you prefer to organize files by type (e.g., `/opt/sw/<project>` for configs, `/opt/sw/docker-compose/<project>` for compose files):
+
+```bash
+# Install to /opt/sw/omnifileserver/
+cd /opt/sw
+git clone https://github.com/yourusername/docker-omnifileserver.git omnifileserver
+cd omnifileserver
+./manage.sh init
+
+# After init, symlink the compose file to your preferred location
+mkdir -p /opt/sw/docker-compose/omnifileserver
+ln -s /opt/sw/omnifileserver/docker-compose.yml /opt/sw/docker-compose/omnifileserver/
+
+# Run docker-compose from either location
+cd /opt/sw/docker-compose/omnifileserver
+docker-compose up -d
+```
+
+**Structure:**
+```
+/opt/sw/omnifileserver/              # All configs in one place
+├── manage.sh, generate-compose.sh
+├── users.conf, shares.conf, .env
+├── docker-compose.yml               # Generated here
+├── config/                          # Runtime configs
+└── shares/                          # Data (or symlink to /data)
+
+/opt/sw/docker-compose/omnifileserver/
+└── docker-compose.yml -> /opt/sw/omnifileserver/docker-compose.yml  # Symlink
 ```
 
 ## Setup Instructions
@@ -358,9 +391,9 @@ Edit `generate-compose.sh` and change `fruit_model`:
 ## Migration to Another Host
 
 1. Stop services: `docker-compose down`
-2. Copy entire `docker-homefileserver/` directory to new host:
+2. Copy entire `docker-omnifileserver/` directory to new host:
    ```bash
-   rsync -av docker-homefileserver/ newhost:/path/to/docker-homefileserver/
+   rsync -av docker-omnifileserver/ newhost:/path/to/docker-omnifileserver/
    ```
    **Important:** This includes `.env` file with passwords
 3. Ensure Docker and Docker Compose are installed on new host
