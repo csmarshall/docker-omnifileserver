@@ -135,6 +135,48 @@ list_users() {
     fi
 }
 
+# Command: change-password
+change_password() {
+    local username="$1"
+
+    if [[ -z "$username" ]]; then
+        error "Usage: $0 change-password <username>"
+    fi
+
+    # Check if user exists
+    if ! grep -q "^${username}:" "$USERS_CONF"; then
+        error "User '$username' not found"
+    fi
+
+    # Prompt for new password securely
+    echo -n "Enter new password for user '$username': "
+    read -s password
+    echo
+    echo -n "Confirm new password: "
+    read -s password_confirm
+    echo
+
+    if [[ "$password" != "$password_confirm" ]]; then
+        error "Passwords do not match"
+    fi
+
+    if [[ -z "$password" ]]; then
+        error "Password cannot be empty"
+    fi
+
+    # Update password in .env.passwords file
+    if [[ -f "$PASSWORDS_FILE" ]]; then
+        # Remove old password
+        sed -i.bak "/^PASSWORD_${username}=/d" "$PASSWORDS_FILE"
+        # Add new password
+        echo "PASSWORD_${username}=${password}" >> "$PASSWORDS_FILE"
+        success "Password updated for user '$username'"
+        warn "Run '$0 apply' to apply changes"
+    else
+        error "Password file not found: $PASSWORDS_FILE"
+    fi
+}
+
 # Command: add-share
 add_share() {
     local name="$1"
@@ -442,6 +484,11 @@ User Management:
   list-users
       List all configured users
 
+  change-password <username>
+      Change password for an existing user
+      Password will be prompted securely
+      Example: $0 change-password alice
+
 Share Management:
   add-share <name> <path> <rw|ro> <users> [comment]
       Add a new share (synced to both Samba and AFP)
@@ -486,6 +533,10 @@ case "${1:-help}" in
         ;;
     list-users)
         list_users
+        ;;
+    change-password)
+        shift
+        change_password "$@"
         ;;
     add-share)
         shift

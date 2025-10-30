@@ -251,6 +251,9 @@ sudo mount -t cifs //hostname/sharename /mnt/point -o username=alice
 
 # List all users
 ./manage.sh list-users
+
+# Change a user's password
+./manage.sh change-password username
 ```
 
 #### Share Management
