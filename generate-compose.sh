@@ -70,21 +70,9 @@ SERVER_NAME="${HOSTNAME} File Server"
 
 # Generate docker-compose.yml
 cat > "$COMPOSE_FILE" << EOF
-version: '3.8'
-
 services:
-  avahi:
-    image: servercontainers/avahi
-    container_name: omnifileserver-avahi
-    network_mode: host
-    volumes:
-      - ${SCRIPT_DIR}/config/avahi:/external/avahi
-    environment:
-      - AVAHI_ENABLE_REFLECTOR=yes
-    restart: unless-stopped
-
   samba:
-    image: servercontainers/samba
+    image: ghcr.io/servercontainers/samba
     container_name: omnifileserver-samba
     network_mode: host
     volumes:
@@ -131,7 +119,7 @@ cat >> "$COMPOSE_FILE" << EOF
     restart: unless-stopped
 
   netatalk:
-    image: servercontainers/netatalk
+    image: ghcr.io/servercontainers/netatalk
     container_name: omnifileserver-netatalk
     network_mode: host
     volumes:
