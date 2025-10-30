@@ -306,8 +306,8 @@ ENVEOF
     for config in "${CONFIG_VARS[@]}"; do
         IFS='|' read -r name default desc options <<< "$config"
 
-        # Evaluate default (expand variables like ${hostname})
-        eval default_value="$default"
+        # Evaluate default (expand variables like ${SERVER_NAME})
+        eval "default_value=\"$default\""
 
         # Show description and options if available
         echo ""
