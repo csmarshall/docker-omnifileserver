@@ -10,6 +10,18 @@ USERS_CONF="$SCRIPT_DIR/users.conf"
 SHARES_CONF="$SCRIPT_DIR/shares.conf"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
+PASSWORDS_FILE="$SCRIPT_DIR/.env.passwords"
+
+# Detect docker-compose vs docker compose
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+elif docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+else
+    echo "Error: Neither 'docker-compose' nor 'docker compose' found"
+    echo "Please install Docker Compose: https://docs.docker.com/compose/install/"
+    exit 1
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,10 +44,12 @@ warn() {
 }
 
 # Ensure config files exist
-touch "$USERS_CONF" "$SHARES_CONF" "$ENV_FILE"
+touch "$USERS_CONF" "$SHARES_CONF" "$ENV_FILE" "$PASSWORDS_FILE"
 
-# Set secure permissions on .env file
-chmod 600 "$ENV_FILE" 2>/dev/null || true
+# Set secure permissions on passwords file
+chmod 600 "$PASSWORDS_FILE" 2>/dev/null || true
+# General env file can be more permissive
+chmod 644 "$ENV_FILE" 2>/dev/null || true
 
 # Command: add-user
 add_user() {
@@ -72,13 +86,13 @@ add_user() {
     # Add user to config (without password)
     echo "$username:$uid:$gid:$description" >> "$USERS_CONF"
 
-    # Add password to .env file
-    echo "" >> "$ENV_FILE"
-    echo "# User: $username" >> "$ENV_FILE"
-    echo "PASSWORD_${username}=${password}" >> "$ENV_FILE"
+    # Add password to .env.passwords file
+    echo "" >> "$PASSWORDS_FILE"
+    echo "# User: $username" >> "$PASSWORDS_FILE"
+    echo "PASSWORD_${username}=${password}" >> "$PASSWORDS_FILE"
 
     success "Added user '$username' (UID:$uid, GID:$gid)"
-    warn "Password stored securely in .env file"
+    warn "Password stored securely in .env.passwords file (chmod 600)"
     warn "Run '$0 apply' to apply changes"
 }
 
@@ -98,10 +112,10 @@ remove_user() {
     # Remove user from config
     sed -i.bak "/^${username}:/d" "$USERS_CONF"
 
-    # Remove password from .env file
-    if [[ -f "$ENV_FILE" ]]; then
-        sed -i.bak "/^# User: ${username}$/d" "$ENV_FILE"
-        sed -i.bak "/^PASSWORD_${username}=/d" "$ENV_FILE"
+    # Remove password from .env.passwords file
+    if [[ -f "$PASSWORDS_FILE" ]]; then
+        sed -i.bak "/^# User: ${username}$/d" "$PASSWORDS_FILE"
+        sed -i.bak "/^PASSWORD_${username}=/d" "$PASSWORDS_FILE"
     fi
 
     success "Removed user '$username'"
@@ -141,6 +155,27 @@ add_share() {
     # Check if share already exists
     if grep -q "^${name}:" "$SHARES_CONF"; then
         error "Share '$name' already exists"
+    fi
+
+    # Check if path is absolute
+    if [[ "$path" =~ ^/ ]]; then
+        # Absolute path - verify it exists
+        if [[ ! -d "$path" ]]; then
+            warn "Warning: Absolute path '$path' does not exist"
+            read -p "Create it now? (y/N) " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                mkdir -p "$path" || error "Failed to create directory '$path'"
+                success "Created directory '$path'"
+            else
+                warn "Directory not created. Ensure it exists before starting services."
+            fi
+        fi
+    else
+        # Relative path - should be under ./shares/
+        if [[ ! "$path" =~ ^/shares/ ]]; then
+            warn "Warning: Relative path should typically be /shares/something"
+        fi
     fi
 
     # Add share to config
@@ -248,9 +283,9 @@ init() {
 
     # Save user
     echo "$first_user:$first_uid:$first_gid:$first_desc" >> "$USERS_CONF"
-    echo "" >> "$ENV_FILE"
-    echo "# User: $first_user" >> "$ENV_FILE"
-    echo "PASSWORD_${first_user}=${first_password}" >> "$ENV_FILE"
+    echo "" >> "$PASSWORDS_FILE"
+    echo "# User: $first_user" >> "$PASSWORDS_FILE"
+    echo "PASSWORD_${first_user}=${first_password}" >> "$PASSWORDS_FILE"
 
     success "✓ User '$first_user' created"
     echo ""
@@ -317,16 +352,16 @@ init() {
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         cd "$SCRIPT_DIR"
-        docker-compose up -d
+        $DOCKER_COMPOSE up -d
         success "✓ Services started"
         echo ""
 
         # Show status
         echo "Checking status..."
         sleep 2
-        docker-compose ps
+        $DOCKER_COMPOSE ps
     else
-        warn "Services not started. Run 'docker-compose up -d' when ready."
+        warn "Services not started. Run '$DOCKER_COMPOSE up -d' when ready."
     fi
 
     echo ""
@@ -373,11 +408,11 @@ apply() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Restarting services..."
         cd "$SCRIPT_DIR"
-        docker-compose down
-        docker-compose up -d
+        $DOCKER_COMPOSE down
+        $DOCKER_COMPOSE up -d
         success "Services restarted"
     else
-        warn "Changes generated but not applied. Run 'docker-compose up -d' to apply."
+        warn "Changes generated but not applied. Run '$DOCKER_COMPOSE up -d' to apply."
     fi
 }
 

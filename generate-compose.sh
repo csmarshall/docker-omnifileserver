@@ -8,33 +8,36 @@ SHARES_CONF="$SCRIPT_DIR/shares.conf"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Load passwords from .env file
-declare -A PASSWORDS
-if [[ -f "$ENV_FILE" ]]; then
-    while IFS='=' read -r key value; do
-        if [[ "$key" =~ ^PASSWORD_ ]]; then
-            username="${key#PASSWORD_}"
-            PASSWORDS["$username"]="$value"
-        fi
-    done < <(grep "^PASSWORD_" "$ENV_FILE")
-fi
-
 # Read users and generate environment variables
+# Uses docker-compose variable substitution to read passwords from .env
 generate_user_envs() {
     local service="$1"  # "samba" or "netatalk"
 
     grep -v "^#" "$USERS_CONF" | grep -v "^$" | while IFS=: read -r username uid gid description; do
-        local password="${PASSWORDS[$username]}"
-        if [[ -z "$password" ]]; then
-            echo "# WARNING: No password found for user $username" >&2
-            password="CHANGEME"
-        fi
-
         if [[ "$service" == "samba" ]]; then
-            echo "      - ACCOUNT_${username}=${username};${password}"
+            # Docker Compose will substitute ${PASSWORD_username} from .env
+            echo "      - ACCOUNT_${username}=${username};\${PASSWORD_${username}}"
         else
-            echo "      - ACCOUNT_${username}=${username};${uid};${gid};${password}"
+            # Docker Compose will substitute ${PASSWORD_username} from .env
+            echo "      - ACCOUNT_${username}=${username};${uid};${gid};\${PASSWORD_${username}}"
         fi
+    done
+}
+
+# Collect absolute paths from shares.conf
+collect_absolute_paths() {
+    grep -v "^#" "$SHARES_CONF" | grep -v "^$" | while IFS=: read -r name path permissions users comment; do
+        # Check if path is absolute (starts with /)
+        if [[ "$path" =~ ^/ ]]; then
+            echo "$path"
+        fi
+    done | sort -u
+}
+
+# Generate volume mounts for absolute paths
+generate_volume_mounts() {
+    collect_absolute_paths | while read -r abspath; do
+        echo "      - $abspath:$abspath"
     done
 }
 
@@ -75,7 +78,7 @@ services:
     container_name: omnifileserver-avahi
     network_mode: host
     volumes:
-      - ./config/avahi:/external/avahi
+      - ${SCRIPT_DIR}/config/avahi:/external/avahi
     environment:
       - AVAHI_ENABLE_REFLECTOR=yes
     restart: unless-stopped
@@ -85,8 +88,16 @@ services:
     container_name: omnifileserver-samba
     network_mode: host
     volumes:
-      - ./shares:/shares
-      - ./config/samba:/config
+      - ${SCRIPT_DIR}/shares:/shares
+      - ${SCRIPT_DIR}/config/samba:/config
+EOF
+
+# Add absolute path volume mounts
+generate_volume_mounts >> "$COMPOSE_FILE"
+
+cat >> "$COMPOSE_FILE" << EOF
+    env_file:
+      - ${SCRIPT_DIR}/.env.passwords
     environment:
       # Basic server info
       - SAMBA_CONF_SERVER_STRING=${SERVER_NAME}
@@ -124,8 +135,16 @@ cat >> "$COMPOSE_FILE" << EOF
     container_name: omnifileserver-netatalk
     network_mode: host
     volumes:
-      - ./shares:/shares
-      - ./config/netatalk:/config
+      - ${SCRIPT_DIR}/shares:/shares
+      - ${SCRIPT_DIR}/config/netatalk:/config
+EOF
+
+# Add absolute path volume mounts
+generate_volume_mounts >> "$COMPOSE_FILE"
+
+cat >> "$COMPOSE_FILE" << EOF
+    env_file:
+      - ${SCRIPT_DIR}/.env.passwords
     environment:
       # Basic server info
       - AFP_NAME=${SERVER_NAME}

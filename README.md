@@ -39,7 +39,8 @@ docker-omnifileserver/
 ├── generate-compose.sh    # Generates docker-compose.yml from config files
 ├── users.conf             # User definitions (without passwords)
 ├── shares.conf            # Share definitions
-├── .env                   # Passwords (git-ignored, chmod 600)
+├── .env                   # General config (optional, 644)
+├── .env.passwords         # Passwords only (chmod 600, git-ignored)
 ├── .gitignore             # Protects sensitive files
 ├── docker-compose.yml     # Generated service definitions
 ├── README.md              # This file
@@ -142,8 +143,9 @@ Use the management script to add users. Passwords are prompted securely:
 
 **Security features:**
 - Passwords are prompted securely (not visible, not in command history)
-- Passwords stored in `.env` file with `chmod 600` permissions
-- `.env` file is git-ignored automatically
+- Passwords stored in `.env.passwords` file with `chmod 600` permissions
+- `.env.passwords` is git-ignored (never committed)
+- General config can go in `.env` (chmod 644, optionally tracked)
 - Users are automatically synced to both SMB and AFP
 
 #### 3. Add Shares
@@ -163,6 +165,23 @@ Add shares that will be available on both SMB and AFP:
 # List all shares
 ./manage.sh list-shares
 ```
+
+**Using absolute paths for existing directories:**
+
+You can share directories from anywhere on your system:
+
+```bash
+# Share an existing directory with absolute path
+./manage.sh add-share movies /mnt/storage/movies ro alice,bob "Movie Collection"
+
+# Share from external drive
+./manage.sh add-share backup /media/backup-drive rw alice "Backup Drive"
+```
+
+The script will:
+- Automatically mount absolute paths as Docker volumes
+- Verify the directory exists (offer to create if it doesn't)
+- Work alongside relative paths (./shares/*) without conflict
 
 #### 4. Generate Config and Start Services
 
@@ -290,17 +309,24 @@ docker-compose up -d
 ### Configuration Files
 
 **users.conf** - User definitions (format: `username:uid:gid:description`)
-- Passwords are stored separately in `.env` for security
+- Passwords are stored separately in `.env.passwords` for security
 - UIDs/GIDs should match your host system
 
 **shares.conf** - Share definitions (format: `name:path:rw|ro:users:comment`)
 - Automatically synced to both SMB and AFP
 - Users can be comma-separated or 'all'
+- Supports both relative (`/shares/data`) and absolute paths (`/mnt/storage`)
 
-**.env** - Password storage (auto-managed by scripts)
+**.env** - General configuration (optional)
+- Format: `KEY=value`
+- chmod 644 (can be tracked in git if desired)
+- For non-sensitive settings
+
+**.env.passwords** - Password storage (auto-managed by scripts)
 - Format: `PASSWORD_username=password`
-- Automatically chmod 600 for security
-- Git-ignored by default
+- chmod 600 for security (only owner can read)
+- Git-ignored (never committed)
+- Loaded via `env_file` directive in docker-compose.yml
 
 ### Server Identification
 
