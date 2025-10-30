@@ -2,6 +2,9 @@
 
 set -e
 
+# Prevent shell timeout during interactive prompts
+unset TMOUT
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USERS_CONF="$SCRIPT_DIR/users.conf"
 SHARES_CONF="$SCRIPT_DIR/shares.conf"
