@@ -64,9 +64,14 @@ generate_share_envs() {
     done
 }
 
-# Get hostname for server identification
+# Get configuration with defaults (can be overridden in .env)
 HOSTNAME=$(hostname)
-SERVER_NAME="${HOSTNAME} File Server"
+SERVER_NAME="${SERVER_NAME:-${HOSTNAME} File Server}"
+WORKGROUP="${WORKGROUP:-WORKGROUP}"
+SAMBA_LOG_LEVEL="${SAMBA_LOG_LEVEL:-1}"
+AFP_LOG_LEVEL="${AFP_LOG_LEVEL:-info}"
+FRUIT_MODEL="${FRUIT_MODEL:-RackMac}"
+AVAHI_DISABLE_PUBLISHING="${AVAHI_DISABLE_PUBLISHING:-0}"
 
 # Generate docker-compose.yml
 cat > "$COMPOSE_FILE" << EOF
@@ -89,16 +94,16 @@ cat >> "$COMPOSE_FILE" << EOF
     environment:
       # Basic server info
       - SAMBA_CONF_SERVER_STRING=${SERVER_NAME}
-      - SAMBA_CONF_WORKGROUP=WORKGROUP
+      - SAMBA_CONF_WORKGROUP=${WORKGROUP}
 
       # Avahi/mDNS service discovery
       - AVAHI_NAME=${SERVER_NAME}
-      - AVAHI_DISABLE_PUBLISHING=0
+      - AVAHI_DISABLE_PUBLISHING=${AVAHI_DISABLE_PUBLISHING}
 
       # Advanced options
-      - SAMBA_CONF_LOG_LEVEL=1
+      - SAMBA_CONF_LOG_LEVEL=${SAMBA_LOG_LEVEL}
       - SAMBA_GLOBAL_CONFIG_fruit_metadata=stream
-      - SAMBA_GLOBAL_CONFIG_fruit_model=RackMac
+      - SAMBA_GLOBAL_CONFIG_fruit_model=${FRUIT_MODEL}
       - SAMBA_GLOBAL_CONFIG_vfs_objects=catia fruit streams_xattr
 
       # User accounts (generated from users.conf)
@@ -136,14 +141,14 @@ cat >> "$COMPOSE_FILE" << EOF
     environment:
       # Basic server info
       - AFP_NAME=${SERVER_NAME}
-      - AFP_WORKGROUP=WORKGROUP
+      - AFP_WORKGROUP=${WORKGROUP}
 
       # Avahi/mDNS service discovery
       - AVAHI_NAME=${SERVER_NAME}
-      - AVAHI_DISABLE_PUBLISHING=0
+      - AVAHI_DISABLE_PUBLISHING=${AVAHI_DISABLE_PUBLISHING}
 
       # Advanced options
-      - AFP_LOGLEVEL=info
+      - AFP_LOGLEVEL=${AFP_LOG_LEVEL}
 
       # User accounts (generated from users.conf)
 EOF

@@ -1,6 +1,7 @@
 # Environment files
-.env               # General config (optional, can be tracked if desired)
+.env               # General config (optional, can be tracked if no secrets)
 .env.passwords     # Passwords only (NEVER commit this)
+!.env.example      # Example config (safe to commit)
 
 # Generated configuration (created by manage.sh)
 docker-compose.yml
