@@ -1,0 +1,460 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+USERS_CONF="$SCRIPT_DIR/users.conf"
+SHARES_CONF="$SCRIPT_DIR/shares.conf"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+ENV_FILE="$SCRIPT_DIR/.env"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Helper functions
+error() {
+    echo -e "${RED}Error: $1${NC}" >&2
+    exit 1
+}
+
+success() {
+    echo -e "${GREEN}$1${NC}"
+}
+
+warn() {
+    echo -e "${YELLOW}$1${NC}"
+}
+
+# Ensure config files exist
+touch "$USERS_CONF" "$SHARES_CONF" "$ENV_FILE"
+
+# Set secure permissions on .env file
+chmod 600 "$ENV_FILE" 2>/dev/null || true
+
+# Command: add-user
+add_user() {
+    local username="$1"
+    local uid="${2:-1000}"
+    local gid="${3:-1000}"
+    local description="${4:-$username}"
+
+    if [[ -z "$username" ]]; then
+        error "Usage: $0 add-user <username> [uid] [gid] [description]"
+    fi
+
+    # Check if user already exists
+    if grep -q "^${username}:" "$USERS_CONF"; then
+        error "User '$username' already exists"
+    fi
+
+    # Prompt for password securely
+    echo -n "Enter password for user '$username': "
+    read -s password
+    echo
+    echo -n "Confirm password: "
+    read -s password_confirm
+    echo
+
+    if [[ "$password" != "$password_confirm" ]]; then
+        error "Passwords do not match"
+    fi
+
+    if [[ -z "$password" ]]; then
+        error "Password cannot be empty"
+    fi
+
+    # Add user to config (without password)
+    echo "$username:$uid:$gid:$description" >> "$USERS_CONF"
+
+    # Add password to .env file
+    echo "" >> "$ENV_FILE"
+    echo "# User: $username" >> "$ENV_FILE"
+    echo "PASSWORD_${username}=${password}" >> "$ENV_FILE"
+
+    success "Added user '$username' (UID:$uid, GID:$gid)"
+    warn "Password stored securely in .env file"
+    warn "Run '$0 apply' to apply changes"
+}
+
+# Command: remove-user
+remove_user() {
+    local username="$1"
+
+    if [[ -z "$username" ]]; then
+        error "Usage: $0 remove-user <username>"
+    fi
+
+    # Check if user exists
+    if ! grep -q "^${username}:" "$USERS_CONF"; then
+        error "User '$username' not found"
+    fi
+
+    # Remove user from config
+    sed -i.bak "/^${username}:/d" "$USERS_CONF"
+
+    # Remove password from .env file
+    if [[ -f "$ENV_FILE" ]]; then
+        sed -i.bak "/^# User: ${username}$/d" "$ENV_FILE"
+        sed -i.bak "/^PASSWORD_${username}=/d" "$ENV_FILE"
+    fi
+
+    success "Removed user '$username'"
+    warn "Run '$0 apply' to apply changes"
+}
+
+# Command: list-users
+list_users() {
+    echo "Current Users:"
+    echo "---"
+    if [[ -s "$USERS_CONF" ]]; then
+        grep -v "^#" "$USERS_CONF" | grep -v "^$" | while IFS=: read -r username uid gid description; do
+            echo "  $username (UID:$uid, GID:$gid) - $description"
+        done
+    else
+        echo "  (no users configured)"
+    fi
+}
+
+# Command: add-share
+add_share() {
+    local name="$1"
+    local path="$2"
+    local permissions="$3"
+    local users="$4"
+    local comment="${5:-$name}"
+
+    if [[ -z "$name" || -z "$path" || -z "$permissions" || -z "$users" ]]; then
+        error "Usage: $0 add-share <name> <path> <rw|ro> <users> [comment]"
+    fi
+
+    # Validate permissions
+    if [[ "$permissions" != "rw" && "$permissions" != "ro" ]]; then
+        error "Permissions must be 'rw' or 'ro'"
+    fi
+
+    # Check if share already exists
+    if grep -q "^${name}:" "$SHARES_CONF"; then
+        error "Share '$name' already exists"
+    fi
+
+    # Add share to config
+    echo "$name:$path:$permissions:$users:$comment" >> "$SHARES_CONF"
+    success "Added share '$name' -> $path ($permissions)"
+    warn "Run '$0 apply' to apply changes"
+}
+
+# Command: remove-share
+remove_share() {
+    local name="$1"
+
+    if [[ -z "$name" ]]; then
+        error "Usage: $0 remove-share <name>"
+    fi
+
+    # Check if share exists
+    if ! grep -q "^${name}:" "$SHARES_CONF"; then
+        error "Share '$name' not found"
+    fi
+
+    # Remove share from config
+    sed -i.bak "/^${name}:/d" "$SHARES_CONF"
+    success "Removed share '$name'"
+    warn "Run '$0 apply' to apply changes"
+}
+
+# Command: list-shares
+list_shares() {
+    echo "Current Shares:"
+    echo "---"
+    if [[ -s "$SHARES_CONF" ]]; then
+        grep -v "^#" "$SHARES_CONF" | grep -v "^$" | while IFS=: read -r name path permissions users comment; do
+            echo "  $name -> $path [$permissions] (users: $users) - $comment"
+        done
+    else
+        echo "  (no shares configured)"
+    fi
+}
+
+# Command: init
+init() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║          Home File Server - Initial Setup                 ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Check if already initialized
+    if [[ -f "$COMPOSE_FILE" ]] || grep -q "^[^#]" "$USERS_CONF" 2>/dev/null || grep -q "^[^#]" "$SHARES_CONF" 2>/dev/null; then
+        warn "Warning: Configuration already exists!"
+        read -p "Continue anyway? This may overwrite existing setup. (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Initialization cancelled."
+            exit 0
+        fi
+    fi
+
+    echo "This wizard will help you set up your file server."
+    echo ""
+
+    # Step 1: Create directories
+    echo "Step 1: Creating directory structure..."
+    mkdir -p "$SCRIPT_DIR/shares"
+    mkdir -p "$SCRIPT_DIR/config/samba"
+    mkdir -p "$SCRIPT_DIR/config/netatalk"
+    mkdir -p "$SCRIPT_DIR/config/avahi"
+    success "✓ Directories created"
+    echo ""
+
+    # Step 2: First user
+    echo "Step 2: Create your first user account"
+    echo "This user will have access to the file shares."
+    echo ""
+    read -p "Username: " first_user
+
+    if [[ -z "$first_user" ]]; then
+        error "Username cannot be empty"
+    fi
+
+    read -p "UID (default: 1000): " first_uid
+    first_uid="${first_uid:-1000}"
+
+    read -p "GID (default: 1000): " first_gid
+    first_gid="${first_gid:-1000}"
+
+    read -p "Description (default: $first_user): " first_desc
+    first_desc="${first_desc:-$first_user}"
+
+    # Get password
+    echo -n "Password: "
+    read -s first_password
+    echo
+    echo -n "Confirm password: "
+    read -s first_password_confirm
+    echo
+
+    if [[ "$first_password" != "$first_password_confirm" ]]; then
+        error "Passwords do not match"
+    fi
+
+    if [[ -z "$first_password" ]]; then
+        error "Password cannot be empty"
+    fi
+
+    # Save user
+    echo "$first_user:$first_uid:$first_gid:$first_desc" >> "$USERS_CONF"
+    echo "" >> "$ENV_FILE"
+    echo "# User: $first_user" >> "$ENV_FILE"
+    echo "PASSWORD_${first_user}=${first_password}" >> "$ENV_FILE"
+
+    success "✓ User '$first_user' created"
+    echo ""
+
+    # Step 3: First share
+    echo "Step 3: Create your first share"
+    echo ""
+    read -p "Share name (e.g., 'shared'): " first_share
+
+    if [[ -z "$first_share" ]]; then
+        error "Share name cannot be empty"
+    fi
+
+    read -p "Directory name in shares/ (default: $first_share): " first_dir
+    first_dir="${first_dir:-$first_share}"
+
+    echo "Permissions:"
+    echo "  rw - Read/write access"
+    echo "  ro - Read-only access"
+    read -p "Permissions (rw/ro, default: rw): " first_perms
+    first_perms="${first_perms:-rw}"
+
+    if [[ "$first_perms" != "rw" && "$first_perms" != "ro" ]]; then
+        error "Permissions must be 'rw' or 'ro'"
+    fi
+
+    read -p "Description (default: $first_share): " first_comment
+    first_comment="${first_comment:-$first_share}"
+
+    # Create share directory
+    mkdir -p "$SCRIPT_DIR/shares/$first_dir"
+
+    # Save share
+    echo "$first_share:/shares/$first_dir:$first_perms:$first_user:$first_comment" >> "$SHARES_CONF"
+
+    success "✓ Share '$first_share' created at shares/$first_dir"
+    echo ""
+
+    # Step 4: Set permissions
+    echo "Step 4: Setting permissions..."
+    chown -R "${first_uid}:${first_gid}" "$SCRIPT_DIR/shares/$first_dir" 2>/dev/null || {
+        warn "Could not set ownership (may need sudo). You can fix this later with:"
+        echo "  sudo chown -R ${first_uid}:${first_gid} $SCRIPT_DIR/shares/$first_dir"
+    }
+    chmod 755 "$SCRIPT_DIR/shares/$first_dir"
+    success "✓ Permissions set"
+    echo ""
+
+    # Step 5: Generate config
+    echo "Step 5: Generating docker-compose.yml..."
+    if ! "$SCRIPT_DIR/generate-compose.sh"; then
+        error "Failed to generate docker-compose.yml"
+    fi
+    success "✓ Configuration generated"
+    echo ""
+
+    # Step 6: Start services
+    echo "Step 6: Start Docker services"
+    read -p "Start services now? (Y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        cd "$SCRIPT_DIR"
+        docker-compose up -d
+        success "✓ Services started"
+        echo ""
+
+        # Show status
+        echo "Checking status..."
+        sleep 2
+        docker-compose ps
+    else
+        warn "Services not started. Run 'docker-compose up -d' when ready."
+    fi
+
+    echo ""
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║                    Setup Complete! 🎉                      ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "Your file server is ready!"
+    echo ""
+    echo "Server Name: $(hostname) File Server"
+    echo "User: $first_user"
+    echo "Share: $first_share (at /shares/$first_dir)"
+    echo ""
+    echo "Next steps:"
+    echo "  • Connect from clients using smb://$(hostname) or afp://$(hostname)"
+    echo "  • Add more users: ./manage.sh add-user <username>"
+    echo "  • Add more shares: ./manage.sh add-share <name> <path> <rw|ro> <users>"
+    echo "  • View logs: docker-compose logs -f"
+    echo ""
+}
+
+# Command: apply
+apply() {
+    echo "Generating docker-compose.yml from configuration..."
+
+    if ! "$SCRIPT_DIR/generate-compose.sh"; then
+        error "Failed to generate docker-compose.yml"
+    fi
+
+    success "Generated docker-compose.yml"
+
+    # Ask if user wants to restart services
+    echo ""
+    read -p "Restart services to apply changes? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Restarting services..."
+        cd "$SCRIPT_DIR"
+        docker-compose down
+        docker-compose up -d
+        success "Services restarted"
+    else
+        warn "Changes generated but not applied. Run 'docker-compose up -d' to apply."
+    fi
+}
+
+# Command: help
+show_help() {
+    cat << EOF
+Home File Server Management Tool
+
+Usage: $0 <command> [arguments]
+
+Initial Setup:
+  init
+      Interactive setup wizard for first-time configuration
+      Creates directories, first user, first share, and starts services
+      Example: $0 init
+
+User Management:
+  add-user <username> [uid] [gid] [description]
+      Add a new user (synced to both Samba and AFP)
+      Password will be prompted securely (not visible in command history)
+      Example: $0 add-user alice 1000 1000 "Alice Smith"
+
+  remove-user <username>
+      Remove a user
+      Example: $0 remove-user alice
+
+  list-users
+      List all configured users
+
+Share Management:
+  add-share <name> <path> <rw|ro> <users> [comment]
+      Add a new share (synced to both Samba and AFP)
+      Example: $0 add-share media /shares/media ro alice,bob "Media Library"
+
+  remove-share <name>
+      Remove a share
+      Example: $0 remove-share media
+
+  list-shares
+      List all configured shares
+
+Apply Changes:
+  apply
+      Regenerate docker-compose.yml and optionally restart services
+
+Help:
+  help
+      Show this help message
+
+Notes:
+  - Passwords are stored securely in .env file (not in CLI history or users.conf)
+  - UIDs should match host system for proper file permissions
+  - Users can be comma-separated or 'all' for share access
+  - Always run 'apply' after making changes
+  - Add .env to .gitignore to avoid committing passwords
+EOF
+}
+
+# Main command dispatcher
+case "${1:-help}" in
+    init)
+        init
+        ;;
+    add-user)
+        shift
+        add_user "$@"
+        ;;
+    remove-user)
+        shift
+        remove_user "$@"
+        ;;
+    list-users)
+        list_users
+        ;;
+    add-share)
+        shift
+        add_share "$@"
+        ;;
+    remove-share)
+        shift
+        remove_share "$@"
+        ;;
+    list-shares)
+        list_shares
+        ;;
+    apply)
+        apply
+        ;;
+    help|--help|-h)
+        show_help
+        ;;
+    *)
+        error "Unknown command: $1\n\nRun '$0 help' for usage information"
+        ;;
+esac
