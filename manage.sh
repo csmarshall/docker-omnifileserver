@@ -12,16 +12,19 @@ COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 PASSWORDS_FILE="$SCRIPT_DIR/.env.passwords"
 
-# Detect docker-compose vs docker compose
+# Detect docker-compose vs docker compose and build full command with paths
 if command -v docker-compose &> /dev/null; then
-    DOCKER_COMPOSE="docker-compose"
+    DOCKER_COMPOSE_CMD="docker-compose"
 elif docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+    DOCKER_COMPOSE_CMD="docker compose"
 else
     echo "Error: Neither 'docker-compose' nor 'docker compose' found"
     echo "Please install Docker Compose: https://docs.docker.com/compose/install/"
     exit 1
 fi
+
+# Build full docker-compose command with explicit paths and env files
+DOCKER_COMPOSE="$DOCKER_COMPOSE_CMD -f $COMPOSE_FILE --env-file $ENV_FILE --env-file $PASSWORDS_FILE"
 
 # Colors for output
 RED='\033[0;31m'
@@ -302,26 +305,25 @@ init() {
 ENVEOF
 
     # Iterate through config variables and prompt for each
-    declare -A config_values
     for config in "${CONFIG_VARS[@]}"; do
         IFS='|' read -r name default desc options <<< "$config"
 
         # Evaluate default (expand variables like ${SERVER_NAME})
-        eval "default_value=\"$default\""
+        # shellcheck disable=SC2154
+        eval "default_value=\"${default}\""
 
         # Show description and options if available
         echo ""
-        echo "$desc"
-        if [[ -n "$options" ]]; then
-            echo "Options: $options"
+        echo "${desc}"
+        if [[ -n "${options}" ]]; then
+            echo "Options: ${options}"
         fi
 
         # Prompt with default
-        read -p "${name} [${default_value}]: " user_value
+        read -r -p "${name} [${default_value}]: " user_value
 
         # Use default if empty
-        final_value="${user_value:-$default_value}"
-        config_values["$name"]="$final_value"
+        final_value="${user_value:-${default_value}}"
 
         # Append to .env
         echo "${name}=${final_value}" >> "$ENV_FILE"

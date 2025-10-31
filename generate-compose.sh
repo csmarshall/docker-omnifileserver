@@ -3,17 +3,19 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-USERS_CONF="$SCRIPT_DIR/users.conf"
-SHARES_CONF="$SCRIPT_DIR/shares.conf"
-COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-ENV_FILE="$SCRIPT_DIR/.env"
+USERS_CONF="${SCRIPT_DIR}/users.conf"
+SHARES_CONF="${SCRIPT_DIR}/shares.conf"
+COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+ENV_FILE="${SCRIPT_DIR}/.env"
+PASSWORDS_FILE="${SCRIPT_DIR}/.env.passwords"
 
 # Read users and generate environment variables
 # Uses docker-compose variable substitution to read passwords from .env
 generate_user_envs() {
     local service="$1"  # "samba" or "netatalk"
 
-    grep -v "^#" "$USERS_CONF" | grep -v "^$" | while IFS=: read -r username uid gid description; do
+    # shellcheck disable=SC2034
+    grep -v "^#" "${USERS_CONF}" | grep -v "^$" | while IFS=: read -r username uid gid description; do
         if [[ "$service" == "samba" ]]; then
             # Docker Compose will substitute ${PASSWORD_username} from .env
             echo "      - ACCOUNT_${username}=${username};\${PASSWORD_${username}}"
@@ -75,6 +77,17 @@ AVAHI_DISABLE_PUBLISHING="${AVAHI_DISABLE_PUBLISHING:-0}"
 
 # Generate docker-compose.yml
 cat > "$COMPOSE_FILE" << EOF
+# Generated docker-compose.yml for OmniFileServer
+# To run this configuration, use one of these commands:
+#
+# Via manage.sh (recommended):
+#   ${SCRIPT_DIR}/manage.sh apply
+#
+# Direct docker compose command:
+#   docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} --env-file ${PASSWORDS_FILE} up -d
+#
+# The --env-file flags are required for variable substitution in this file
+
 services:
   samba:
     image: ghcr.io/servercontainers/samba
@@ -89,6 +102,7 @@ EOF
 generate_volume_mounts >> "$COMPOSE_FILE"
 
 cat >> "$COMPOSE_FILE" << EOF
+    # Passwords file path: ${SCRIPT_DIR}/.env.passwords
     env_file:
       - ${SCRIPT_DIR}/.env.passwords
     environment:
@@ -136,6 +150,7 @@ EOF
 generate_volume_mounts >> "$COMPOSE_FILE"
 
 cat >> "$COMPOSE_FILE" << EOF
+    # Passwords file path: ${SCRIPT_DIR}/.env.passwords
     env_file:
       - ${SCRIPT_DIR}/.env.passwords
     environment:
