@@ -511,18 +511,25 @@ ENVEOF
     # Step 4: First share
     echo "Step 4: Create your first share"
     echo ""
-    echo "Path options:"
-    echo "  - Relative: Directory under ./shares/ (e.g., 'media' becomes ./shares/media)"
-    echo "  - Absolute: Full path on host (e.g., '/storage/scanner')"
-    echo ""
     read -p "Share name (e.g., 'shared'): " first_share
 
     if [[ -z "$first_share" ]]; then
         error "Share name cannot be empty"
     fi
 
-    read -p "Path (relative or absolute, default: $first_share): " first_path
-    first_path="${first_path:-$first_share}"
+    echo ""
+    echo "Enter the absolute path to the directory you want to share."
+    echo "Examples: /mnt/storage/media, /storage/scanner, /home/alice/Documents"
+    read -p "Absolute path on host: " first_path
+
+    if [[ -z "$first_path" ]]; then
+        error "Path cannot be empty"
+    fi
+
+    # Validate it's an absolute path
+    if [[ ! "${first_path}" =~ ^/ ]]; then
+        error "Path must be absolute (start with /). Got: ${first_path}"
+    fi
 
     echo "Permissions:"
     echo "  rw - Read/write access"
@@ -563,65 +570,55 @@ ENVEOF
             ;;
     esac
 
-    # Handle path (absolute vs relative)
-    local share_path
-    local host_path
-    if [[ "${first_path}" =~ ^/ ]]; then
-        # Absolute path
-        share_path="${first_path}"
-        host_path="${first_path}"
-
-        # Check if exists
-        if [[ ! -d "${host_path}" ]]; then
-            warn "Warning: Absolute path '${host_path}' does not exist"
-            read -r -p "Create it now? (y/N) " -n 1
-            echo
-            if [[ ${REPLY} =~ ^[Yy]$ ]]; then
-                if mkdir -p "${host_path}" 2>/dev/null; then
-                    success "Created directory '${host_path}'"
-                else
-                    warn "Failed to create directory (permission denied). Run these commands:"
-                    show_sudo_cmd "mkdir -p ${host_path}"
-                    show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${host_path}"
-                fi
+    # Validate path exists, offer to create if not
+    if [[ ! -d "${first_path}" ]]; then
+        warn "Warning: Path '${first_path}' does not exist"
+        read -r -p "Create it now? (y/N) " -n 1
+        echo
+        if [[ ${REPLY} =~ ^[Yy]$ ]]; then
+            if mkdir -p "${first_path}" 2>/dev/null; then
+                success "✓ Created directory '${first_path}'"
             else
-                warn "Directory not created. Ensure it exists before starting services."
+                warn "Failed to create directory (permission denied). Run these commands:"
+                show_sudo_cmd "mkdir -p ${first_path}"
+                show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${first_path}"
+                echo ""
+                warn "Create the directory manually, then run '$0 init' again or continue anyway."
             fi
+        else
+            warn "Directory not created. Ensure it exists before starting services."
         fi
-    else
-        # Relative path - create under ./shares/
-        share_path="/shares/${first_path}"
-        host_path="${SCRIPT_DIR}/shares/${first_path}"
-
-        # Create share directory
-        mkdir -p "${host_path}"
-        success "✓ Created directory ${host_path}"
     fi
 
-    # Save share
-    echo "${first_share}:${share_path}:${first_perms}:${first_user}:${first_comment}:${first_protocols}" >> "${SHARES_CONF}"
-    success "✓ Share '${first_share}' -> ${share_path} (protocols: ${first_protocols})"
+    # Save share (path is used as-is for both host and container)
+    echo "${first_share}:${first_path}:${first_perms}:${first_user}:${first_comment}:${first_protocols}" >> "${SHARES_CONF}"
+    success "✓ Share '${first_share}' -> ${first_path} (protocols: ${first_protocols})"
     echo ""
 
-    # Step 5: Set permissions (only for relative paths under ./shares/)
-    if [[ ! "${first_path}" =~ ^/ ]]; then
-        echo "Step 5: Setting permissions..."
-        if chown -R "${first_uid}:${first_gid}" "${host_path}" 2>/dev/null; then
-            chmod 755 "${host_path}"
-            success "✓ Permissions set"
+    # Step 5: Set permissions
+    echo "Step 5: Setting permissions..."
+    echo ""
+    echo "The configured user UID/GID must match the file ownership on the host."
+    echo "User: ${first_user} (UID:${first_uid}, GID:${first_gid})"
+    echo "Path: ${first_path}"
+    echo ""
+
+    # Try to set permissions
+    if [[ -d "${first_path}" ]]; then
+        if chown -R "${first_uid}:${first_gid}" "${first_path}" 2>/dev/null; then
+            chmod 755 "${first_path}"
+            success "✓ Permissions set successfully"
         else
             warn "Could not set ownership (permission denied). Run these commands:"
-            show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${host_path}"
-            show_sudo_cmd "chmod 755 ${host_path}"
+            show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${first_path}"
+            show_sudo_cmd "chmod 755 ${first_path}"
         fi
-        echo ""
     else
-        echo "Step 5: Permissions for absolute path"
-        warn "For absolute paths, set permissions manually:"
-        show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${host_path}"
-        show_sudo_cmd "chmod 755 ${host_path}"
-        echo ""
+        warn "Directory does not exist yet. Set permissions after creating it:"
+        show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${first_path}"
+        show_sudo_cmd "chmod 755 ${first_path}"
     fi
+    echo ""
 
     # Step 6: Generate config
     echo "Step 6: Generating docker-compose.yml..."
