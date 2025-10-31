@@ -1356,7 +1356,76 @@ Notes:
 EOF
 }
 
+# Check if script is being run with appropriate permissions
+check_run_permissions() {
+    local command_arg="${1:-help}"
+    local current_user
+    current_user=$(whoami)
+    local current_uid
+    current_uid=$(id -u)
+
+    # Get directory owner
+    local dir_owner_uid
+    dir_owner_uid=$(stat -f "%u" "${SCRIPT_DIR}" 2>/dev/null || stat -c "%u" "${SCRIPT_DIR}" 2>/dev/null)
+
+    # Check if running as root
+    if is_root; then
+        echo ""
+        warn "⚠️  WARNING: Running manage.sh as root is not recommended!"
+        echo ""
+        echo "This script should be run as a regular user."
+        echo "Administrative commands (mkdir, chown, docker-compose) will be shown with 'sudo' prefix."
+        echo ""
+        echo "Running as root will:"
+        echo "  • Create config files owned by root (.env, users.conf, shares.conf)"
+        echo "  • Cause permission issues when editing files later"
+        echo "  • Make it harder to manage the configuration"
+        echo ""
+        echo "Recommended: Run as your regular user instead:"
+        echo "  \$ ./manage.sh ${command_arg}"
+        echo ""
+        read -p "Continue anyway as root? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Cancelled."
+            exit 0
+        fi
+        echo ""
+    fi
+
+    # Check if directory owner matches current user (skip if running as root, already warned)
+    if ! is_root && [[ "${current_uid}" != "${dir_owner_uid}" ]]; then
+        local dir_owner_name
+        dir_owner_name=$(stat -f "%Su" "${SCRIPT_DIR}" 2>/dev/null || stat -c "%U" "${SCRIPT_DIR}" 2>/dev/null)
+
+        echo ""
+        warn "⚠️  WARNING: Directory ownership mismatch!"
+        echo ""
+        echo "Current user:       ${current_user} (UID ${current_uid})"
+        echo "Directory owner:    ${dir_owner_name} (UID ${dir_owner_uid})"
+        echo "Script directory:   ${SCRIPT_DIR}"
+        echo ""
+        echo "This script should be run by the user who owns the project directory."
+        echo "Files created will be owned by ${current_user}, which may cause permission issues."
+        echo ""
+        echo "Recommended: Run as the directory owner instead:"
+        echo "  \$ sudo -u ${dir_owner_name} ./manage.sh ${command_arg}"
+        echo ""
+        echo "Or change directory ownership to current user:"
+        echo "  \$ sudo chown -R ${current_user}:${current_user} ${SCRIPT_DIR}"
+        echo ""
+        read -p "Continue anyway as ${current_user}? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Cancelled."
+            exit 0
+        fi
+        echo ""
+    fi
+}
+
 # Main command dispatcher
+check_run_permissions "${1:-help}"
 case "${1:-help}" in
     init)
         init
