@@ -470,6 +470,76 @@ ENVEOF
     echo ""
 }
 
+# Command: enable-homes
+enable_homes() {
+    local base_path="${1}"
+
+    # Auto-detect OS and set default home directory if not provided
+    if [[ -z "${base_path}" ]]; then
+        local os_type
+        os_type=$(uname)
+        case "${os_type}" in
+            Darwin)
+                base_path="/Users"
+                ;;
+            Linux)
+                base_path="/home"
+                ;;
+            *)
+                error "Unknown OS type: ${os_type}\nPlease specify home directory manually:\n  $0 enable-homes <base-path>"
+                ;;
+        esac
+        echo "Auto-detected OS: ${os_type}"
+        echo "Using default home directory: ${base_path}"
+        echo ""
+    fi
+
+    # Validate path exists
+    if [[ ! -d "${base_path}" ]]; then
+        error "Directory '${base_path}' does not exist"
+    fi
+
+    echo "Enabling home directory shares..."
+    echo "Base path: ${base_path}"
+    echo ""
+
+    # Update or add to .env file
+    if grep -q "^HOME_DIRECTORIES_ENABLED=" "${ENV_FILE}" 2>/dev/null; then
+        sed -i.bak "s|^HOME_DIRECTORIES_ENABLED=.*|HOME_DIRECTORIES_ENABLED=yes|" "${ENV_FILE}"
+        sed -i.bak "s|^HOME_DIRECTORIES_BASE=.*|HOME_DIRECTORIES_BASE=${base_path}|" "${ENV_FILE}"
+    else
+        {
+            echo ""
+            echo "# Home directory shares"
+            echo "HOME_DIRECTORIES_ENABLED=yes"
+            echo "HOME_DIRECTORIES_BASE=${base_path}"
+        } >> "${ENV_FILE}"
+    fi
+
+    success "✓ Home directories enabled"
+    echo ""
+    echo "Each user will see their home directory as a share:"
+    echo "  - Samba (SMB): \\\\\\\\server\\\\username"
+    echo "  - Netatalk (AFP): afp://server/username"
+    echo ""
+    warn "Run '$0 apply' to regenerate configuration and restart services"
+}
+
+# Command: disable-homes
+disable_homes() {
+    echo "Disabling home directory shares..."
+
+    if grep -q "^HOME_DIRECTORIES_ENABLED=" "${ENV_FILE}" 2>/dev/null; then
+        sed -i.bak "s|^HOME_DIRECTORIES_ENABLED=.*|HOME_DIRECTORIES_ENABLED=no|" "${ENV_FILE}"
+        success "✓ Home directories disabled"
+    else
+        warn "Home directories are not currently enabled"
+    fi
+
+    echo ""
+    warn "Run '$0 apply' to regenerate configuration and restart services"
+}
+
 # Command: apply
 apply() {
     echo "Generating docker-compose.yml from configuration..."
@@ -546,6 +616,18 @@ Share Management:
   list-shares
       List all configured shares
 
+Home Directory Shares:
+  enable-homes [base-path]
+      Enable per-user home directory shares
+      Each user gets their own home directory as a share
+      Auto-detects OS if base-path not provided (/home for Linux, /Users for macOS)
+      Example: $0 enable-homes            # Auto-detect
+      Example: $0 enable-homes /home      # Manual Linux
+      Example: $0 enable-homes /Users     # Manual macOS
+
+  disable-homes
+      Disable home directory shares
+
 Apply Changes:
   apply
       Regenerate docker-compose.yml and optionally restart services
@@ -593,6 +675,13 @@ case "${1:-help}" in
         ;;
     list-shares)
         list_shares
+        ;;
+    enable-homes)
+        shift
+        enable_homes "$@"
+        ;;
+    disable-homes)
+        disable_homes
         ;;
     apply)
         apply

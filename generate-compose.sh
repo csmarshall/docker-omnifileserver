@@ -9,6 +9,12 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 ENV_FILE="${SCRIPT_DIR}/.env"
 PASSWORDS_FILE="${SCRIPT_DIR}/.env.passwords"
 
+# Source .env file if it exists to read configuration
+if [[ -f "${ENV_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+fi
+
 # Read users and generate environment variables
 # Uses docker-compose variable substitution to read passwords from .env
 generate_user_envs() {
@@ -74,6 +80,22 @@ SAMBA_LOG_LEVEL="${SAMBA_LOG_LEVEL:-1}"
 AFP_LOG_LEVEL="${AFP_LOG_LEVEL:-info}"
 FRUIT_MODEL="${FRUIT_MODEL:-RackMac}"
 AVAHI_DISABLE_PUBLISHING="${AVAHI_DISABLE_PUBLISHING:-0}"
+HOME_DIRECTORIES_ENABLED="${HOME_DIRECTORIES_ENABLED:-no}"
+
+# Auto-detect home directory base based on OS if not set
+if [[ -z "${HOME_DIRECTORIES_BASE}" ]]; then
+    case "$(uname)" in
+        Darwin)
+            HOME_DIRECTORIES_BASE="/Users"
+            ;;
+        Linux)
+            HOME_DIRECTORIES_BASE="/home"
+            ;;
+        *)
+            HOME_DIRECTORIES_BASE="/home"  # fallback to Linux default
+            ;;
+    esac
+fi
 
 # Generate docker-compose.yml
 cat > "$COMPOSE_FILE" << EOF
@@ -100,6 +122,11 @@ EOF
 
 # Add absolute path volume mounts
 generate_volume_mounts >> "$COMPOSE_FILE"
+
+# Add home directory mount if enabled
+if [[ "${HOME_DIRECTORIES_ENABLED}" == "yes" ]]; then
+    echo "      - ${HOME_DIRECTORIES_BASE}:${HOME_DIRECTORIES_BASE}" >> "$COMPOSE_FILE"
+fi
 
 cat >> "$COMPOSE_FILE" << EOF
     # Passwords file path: ${SCRIPT_DIR}/.env.passwords
@@ -134,6 +161,16 @@ EOF
 # Add Samba shares
 generate_share_envs "samba" >> "$COMPOSE_FILE"
 
+# Add Samba home directories if enabled
+if [[ "${HOME_DIRECTORIES_ENABLED}" == "yes" ]]; then
+    cat >> "$COMPOSE_FILE" << 'SAMBA_HOMES'
+
+      # Home directory shares (auto-generated per user)
+      - SAMBA_GLOBAL_CONFIG_homes=yes;browseable=no
+      - SAMBA_VOLUME_CONFIG_homes=${HOME_DIRECTORIES_BASE}/%U;yes;no;no;%U
+SAMBA_HOMES
+fi
+
 cat >> "$COMPOSE_FILE" << EOF
     restart: unless-stopped
 
@@ -148,6 +185,11 @@ EOF
 
 # Add absolute path volume mounts
 generate_volume_mounts >> "$COMPOSE_FILE"
+
+# Add home directory mount if enabled
+if [[ "${HOME_DIRECTORIES_ENABLED}" == "yes" ]]; then
+    echo "      - ${HOME_DIRECTORIES_BASE}:${HOME_DIRECTORIES_BASE}" >> "$COMPOSE_FILE"
+fi
 
 cat >> "$COMPOSE_FILE" << EOF
     # Passwords file path: ${SCRIPT_DIR}/.env.passwords
@@ -178,6 +220,15 @@ EOF
 
 # Add Netatalk shares
 generate_share_envs "netatalk" >> "$COMPOSE_FILE"
+
+# Add Netatalk home directories if enabled
+if [[ "${HOME_DIRECTORIES_ENABLED}" == "yes" ]]; then
+    cat >> "$COMPOSE_FILE" << 'NETATALK_HOMES'
+
+      # Home directory shares (auto-generated per user)
+      - NETATALK_GLOBAL_CONFIG_homes="basedir regex = ${HOME_DIRECTORIES_BASE}"
+NETATALK_HOMES
+fi
 
 cat >> "$COMPOSE_FILE" << 'EOF'
     restart: unless-stopped
