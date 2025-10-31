@@ -43,6 +43,7 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 | [014](014-colon-separated-config-format.md) | Colon-Separated Config File Format | Accepted |
 | [015](015-reset-with-optional-backup.md) | Reset Configuration with Optional Backup | Accepted |
 | [016](016-absolute-paths-only-no-project-shares.md) | Absolute Paths Only (No Project ./shares/ Directory) | Accepted |
+| [017](017-auto-detect-uid-gid-from-host.md) | Auto-Detect UID/GID from Host System Users | Accepted |
 
 ## Creating New ADRs
 
