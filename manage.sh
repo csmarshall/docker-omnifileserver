@@ -581,14 +581,20 @@ ENVEOF
     echo
     if [[ ! $REPLY =~ ^[Nn]$ ]]; then
         cd "$SCRIPT_DIR"
-        $DOCKER_COMPOSE up -d
-        success "✓ Services started"
-        echo ""
+        echo "Running: $DOCKER_COMPOSE up -d"
+        if $DOCKER_COMPOSE up -d; then
+            success "✓ Services started"
+            echo ""
 
-        # Show status
-        echo "Checking status..."
-        sleep 2
-        $DOCKER_COMPOSE ps
+            # Show status
+            echo "Checking status..."
+            sleep 2
+            echo "Running: $DOCKER_COMPOSE ps"
+            $DOCKER_COMPOSE ps
+        else
+            warn "Failed to start services. You may need to run with sudo:"
+            echo "  sudo $DOCKER_COMPOSE up -d"
+        fi
     else
         warn "Services not started. Run '$DOCKER_COMPOSE up -d' when ready."
     fi
@@ -707,9 +713,15 @@ apply() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Restarting services..."
         cd "$SCRIPT_DIR"
+        echo "Running: $DOCKER_COMPOSE down"
         $DOCKER_COMPOSE down
-        $DOCKER_COMPOSE up -d
-        success "Services restarted"
+        echo "Running: $DOCKER_COMPOSE up -d"
+        if $DOCKER_COMPOSE up -d; then
+            success "Services restarted"
+        else
+            warn "Failed to start services. You may need to run with sudo:"
+            echo "  sudo $DOCKER_COMPOSE up -d"
+        fi
     else
         warn "Changes generated but not applied. Run '$DOCKER_COMPOSE up -d' to apply."
     fi
@@ -782,6 +794,7 @@ reset() {
     if [[ -f "${COMPOSE_FILE}" ]]; then
         echo "Stopping and removing containers..."
         cd "${SCRIPT_DIR}" || error "Failed to cd to ${SCRIPT_DIR}"
+        echo "Running: ${DOCKER_COMPOSE} down"
         ${DOCKER_COMPOSE} down 2>/dev/null || warn "Could not stop containers (may not be running)"
     fi
 
