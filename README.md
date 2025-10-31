@@ -307,13 +307,122 @@ docker-compose pull
 docker-compose up -d
 ```
 
+## Understanding Users and Permissions
+
+**Important:** File share users are NOT the same as system users.
+
+### How User Authentication Works
+
+When you create a user with `./manage.sh add-user alice 1000 1000`:
+
+1. **Samba/AFP Authentication** - Creates a file sharing account
+   - Alice can authenticate to SMB/AFP shares with her password
+   - Password stored in **plaintext** in `.env.passwords` (protected by chmod 600)
+   - User is NOT added to `/etc/passwd` (not a system user)
+
+2. **File System Permissions** - Uses UID/GID for file access
+   - Container processes run as the configured UID (1000 in this case)
+   - When accessing files, the kernel checks numeric UID/GID, not username
+   - The UID must match the ownership of files on the host filesystem
+
+### Why UIDs Must Match
+
+Docker containers share the host's kernel. File permissions are **numeric**, not name-based:
+
+```bash
+# Host filesystem
+$ ls -ln /storage/scanner
+drwxr-xr-x  2 1001  1003  /storage/scanner
+
+# If you configure alice as UID 1000
+→ Container process runs as UID 1000
+→ Tries to access files owned by UID 1001
+→ RESULT: Permission denied ❌
+
+# If you configure alice as UID 1001
+→ Container process runs as UID 1001
+→ Accesses files owned by UID 1001
+→ RESULT: Success ✅
+```
+
+**Key insight:** The username doesn't matter for file permissions - only the numeric UID/GID.
+
+### Best Practices
+
+**When sharing files owned by a system user:**
+
+```bash
+# 1. Find the system user's UID/GID
+$ id alice
+uid=501(alice) gid=20(staff)
+
+# 2. Create file share user with matching UID/GID
+$ ./manage.sh add-user alice 501 20
+
+# 3. Files at /home/alice/ owned by 501:20 are now accessible
+```
+
+**When sharing files with custom ownership:**
+
+```bash
+# 1. Decide on UID/GID (e.g., 1000:1000)
+$ ./manage.sh add-user media 1000 1000
+
+# 2. Set ownership on share directory
+$ sudo chown -R 1000:1000 /mnt/storage/media
+```
+
+### Usernames Can (and Should) Match
+
+While usernames don't affect permissions, matching them helps organization:
+
+- **System user:** `alice` (UID 501) - logs into the server
+- **File share user:** `alice` (UID 501) - accesses shares via SMB/AFP
+- Different authentication systems, same UID for file access
+- Makes it clear who owns what files
+
+### Password Security Model
+
+**⚠️ File share passwords are stored in plaintext:**
+
+```bash
+# .env.passwords contents
+PASSWORD_alice=mypassword123
+PASSWORD_bob=bobsecret456
+```
+
+**Protection:**
+- File permissions: `chmod 600` (only file owner can read)
+- Git-ignored: Won't be committed to repositories
+- Private: Not visible in command history (prompted securely)
+
+**Why plaintext?**
+- ServerContainers Samba/AFP images require passwords as environment variables
+- Docker doesn't automatically hash environment variables
+- This is a limitation of the underlying container images
+
+**Security best practices:**
+- ✅ Use **different passwords** for file sharing vs system login
+- ✅ System passwords (in `/etc/shadow`) are hashed and very secure
+- ✅ File share passwords (in `.env.passwords`) are plaintext but private
+- ✅ If someone gains root access to your server, they can read both anyway
+- ✅ For home/small office use, this security model is acceptable
+- ⚠️ For enterprise use, consider additional security layers (VPN, encrypted filesystems)
+
+### Further Reading
+
+- [Understanding how uid and gid work in Docker containers](https://medium.com/@mccode/understanding-how-uid-and-gid-work-in-docker-containers-c37a01d01cf) - Excellent explanation of Docker UID/GID mapping
+- [Understanding the Docker USER Instruction](https://www.docker.com/blog/understanding-the-docker-user-instruction/) - Official Docker documentation
+- [Samba Users, Security, and Domains](https://www.oreilly.com/openbook/samba/book/ch06_01.html) - How Samba authentication works
+- [Samba File Access Controls](https://www.samba.org/samba/docs/old/Samba3-HOWTO/AccessControls.html) - Unix permissions with Samba
+
 ## Configuration Options
 
 ### Configuration Files
 
 **users.conf** - User definitions (format: `username:uid:gid:description`)
-- Passwords are stored separately in `.env.passwords` for security
-- UIDs/GIDs should match your host system
+- Passwords are stored separately in `.env.passwords` (plaintext, chmod 600)
+- UIDs/GIDs should match file ownership on your host system (see "Understanding Users and Permissions" above)
 
 **shares.conf** - Share definitions (format: `name:path:rw|ro:users:comment`)
 - Automatically synced to both SMB and AFP
