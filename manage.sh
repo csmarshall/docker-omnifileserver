@@ -419,8 +419,8 @@ ENVEOF
         # Use default if empty
         final_value="${user_value:-${default_value}}"
 
-        # Append to .env
-        echo "${name}=${final_value}" >> "$ENV_FILE"
+        # Append to .env (quote value to handle spaces)
+        echo "${name}=\"${final_value}\"" >> "$ENV_FILE"
     done
 
     echo "" >> "$ENV_FILE"
