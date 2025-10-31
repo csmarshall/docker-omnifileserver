@@ -186,46 +186,140 @@ add_share() {
     local path="$2"
     local permissions="$3"
     local users="$4"
-    local comment="${5:-$name}"
+    local comment="$5"
+    local protocols="$6"
 
-    if [[ -z "$name" || -z "$path" || -z "$permissions" || -z "$users" ]]; then
-        error "Usage: $0 add-share <name> <path> <rw|ro> <users> [comment]"
-    fi
+    # Interactive wizard mode if no arguments provided
+    if [[ -z "$name" ]]; then
+        echo "╔════════════════════════════════════════════════════════════╗"
+        echo "║              Add New Share - Interactive Wizard           ║"
+        echo "╚════════════════════════════════════════════════════════════╝"
+        echo ""
 
-    # Validate permissions
-    if [[ "$permissions" != "rw" && "$permissions" != "ro" ]]; then
-        error "Permissions must be 'rw' or 'ro'"
-    fi
+        # Share name
+        read -r -p "Share name (no spaces): " name
+        if [[ -z "${name}" ]]; then
+            error "Share name cannot be empty"
+        fi
 
-    # Check if share already exists
-    if grep -q "^${name}:" "$SHARES_CONF"; then
-        error "Share '$name' already exists"
+        # Check if share already exists
+        if grep -q "^${name}:" "${SHARES_CONF}"; then
+            error "Share '${name}' already exists"
+        fi
+
+        # Path
+        echo ""
+        echo "Share path options:"
+        echo "  1. Relative path under ./shares/ (e.g., /shares/documents)"
+        echo "  2. Absolute path to existing directory (e.g., /mnt/storage)"
+        read -r -p "Enter path: " path
+        if [[ -z "${path}" ]]; then
+            error "Path cannot be empty"
+        fi
+
+        # Permissions
+        echo ""
+        read -r -p "Permissions (rw=read-write, ro=read-only) [rw]: " permissions
+        permissions="${permissions:-rw}"
+        if [[ "${permissions}" != "rw" && "${permissions}" != "ro" ]]; then
+            error "Permissions must be 'rw' or 'ro'"
+        fi
+
+        # Users
+        echo ""
+        read -r -p "Allowed users (comma-separated or 'all'): " users
+        if [[ -z "${users}" ]]; then
+            error "Users cannot be empty"
+        fi
+
+        # Comment
+        echo ""
+        read -r -p "Description [${name}]: " comment
+        comment="${comment:-${name}}"
+
+        # Protocols
+        echo ""
+        echo "Select protocols for this share:"
+        echo "  1. Both SMB and AFP (Windows + Mac)"
+        echo "  2. SMB only (Windows/Linux)"
+        echo "  3. AFP only (Mac)"
+        read -r -p "Choice [1]: " protocol_choice
+        protocol_choice="${protocol_choice:-1}"
+
+        case "${protocol_choice}" in
+            1)
+                protocols="smb,afp"
+                ;;
+            2)
+                protocols="smb"
+                ;;
+            3)
+                protocols="afp"
+                ;;
+            *)
+                error "Invalid choice. Must be 1, 2, or 3"
+                ;;
+        esac
+
+        echo ""
+        echo "Summary:"
+        echo "  Name: ${name}"
+        echo "  Path: ${path}"
+        echo "  Permissions: ${permissions}"
+        echo "  Users: ${users}"
+        echo "  Description: ${comment}"
+        echo "  Protocols: ${protocols}"
+        echo ""
+        read -r -p "Add this share? (Y/n) " -n 1
+        echo
+        if [[ ${REPLY} =~ ^[Nn]$ ]]; then
+            warn "Share not added"
+            return
+        fi
+    else
+        # Command-line mode - validate all required parameters
+        if [[ -z "${path}" || -z "${permissions}" || -z "${users}" ]]; then
+            error "Usage: $0 add-share <name> <path> <rw|ro> <users> [comment] [protocols]\n\nOr run without arguments for interactive wizard:\n  $0 add-share"
+        fi
+
+        comment="${comment:-${name}}"
+        protocols="${protocols:-smb,afp}"
+
+        # Validate permissions
+        if [[ "${permissions}" != "rw" && "${permissions}" != "ro" ]]; then
+            error "Permissions must be 'rw' or 'ro'"
+        fi
+
+        # Check if share already exists
+        if grep -q "^${name}:" "${SHARES_CONF}"; then
+            error "Share '${name}' already exists"
+        fi
     fi
 
     # Check if path is absolute
-    if [[ "$path" =~ ^/ ]]; then
+    if [[ "${path}" =~ ^/ ]]; then
         # Absolute path - verify it exists
-        if [[ ! -d "$path" ]]; then
-            warn "Warning: Absolute path '$path' does not exist"
-            read -p "Create it now? (y/N) " -n 1 -r
+        if [[ ! -d "${path}" ]]; then
+            warn "Warning: Absolute path '${path}' does not exist"
+            read -r -p "Create it now? (y/N) " -n 1
             echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                mkdir -p "$path" || error "Failed to create directory '$path'"
-                success "Created directory '$path'"
+            if [[ ${REPLY} =~ ^[Yy]$ ]]; then
+                mkdir -p "${path}" || error "Failed to create directory '${path}'"
+                success "Created directory '${path}'"
             else
                 warn "Directory not created. Ensure it exists before starting services."
             fi
         fi
     else
         # Relative path - should be under ./shares/
-        if [[ ! "$path" =~ ^/shares/ ]]; then
+        if [[ ! "${path}" =~ ^/shares/ ]]; then
             warn "Warning: Relative path should typically be /shares/something"
         fi
     fi
 
     # Add share to config
-    echo "$name:$path:$permissions:$users:$comment" >> "$SHARES_CONF"
-    success "Added share '$name' -> $path ($permissions)"
+    echo "${name}:${path}:${permissions}:${users}:${comment}:${protocols}" >> "${SHARES_CONF}"
+    success "Added share '${name}' -> ${path} (${permissions}, protocols: ${protocols})"
     warn "Run '$0 apply' to apply changes"
 }
 
@@ -605,9 +699,11 @@ User Management:
       Example: $0 change-password alice
 
 Share Management:
-  add-share <name> <path> <rw|ro> <users> [comment]
-      Add a new share (synced to both Samba and AFP)
-      Example: $0 add-share media /shares/media ro alice,bob "Media Library"
+  add-share [<name> <path> <rw|ro> <users> [comment] [protocols]]
+      Add a new share with protocol selection
+      Interactive wizard mode (recommended): $0 add-share
+      Command-line mode: $0 add-share media /shares/media ro alice,bob "Media Library" "smb,afp"
+      Protocols: smb,afp (both), smb (Windows/Linux only), afp (Mac only)
 
   remove-share <name>
       Remove a share

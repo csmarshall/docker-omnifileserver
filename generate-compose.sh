@@ -34,10 +34,10 @@ generate_user_envs() {
 
 # Collect absolute paths from shares.conf
 collect_absolute_paths() {
-    grep -v "^#" "$SHARES_CONF" | grep -v "^$" | while IFS=: read -r name path permissions users comment; do
+    grep -v "^#" "${SHARES_CONF}" | grep -v "^$" | while IFS=: read -r name path permissions users comment protocols; do
         # Check if path is absolute (starts with /)
-        if [[ "$path" =~ ^/ ]]; then
-            echo "$path"
+        if [[ "${path}" =~ ^/ ]]; then
+            echo "${path}"
         fi
     done | sort -u
 }
@@ -53,16 +53,32 @@ generate_volume_mounts() {
 generate_share_envs() {
     local service="$1"  # "samba" or "netatalk"
 
-    grep -v "^#" "$SHARES_CONF" | grep -v "^$" | while IFS=: read -r name path permissions users comment; do
+    grep -v "^#" "${SHARES_CONF}" | grep -v "^$" | while IFS=: read -r name path permissions users comment protocols; do
+        # Default to both protocols if not specified
+        protocols="${protocols:-smb,afp}"
+
+        # Check if this service is enabled for this share
+        local service_protocol
+        if [[ "${service}" == "samba" ]]; then
+            service_protocol="smb"
+        else
+            service_protocol="afp"
+        fi
+
+        # Skip if this protocol is not enabled for this share
+        if [[ ! "${protocols}" =~ ${service_protocol} ]]; then
+            continue
+        fi
+
         local readonly="no"
         local afp_mode="rw"
 
-        if [[ "$permissions" == "ro" ]]; then
+        if [[ "${permissions}" == "ro" ]]; then
             readonly="yes"
             afp_mode="ro"
         fi
 
-        if [[ "$service" == "samba" ]]; then
+        if [[ "${service}" == "samba" ]]; then
             # Format: sharename;path;browseable;readonly;guest;users;admins;writelist;comment
             echo "      - SAMBA_VOLUME_CONFIG_${name}=${path};yes;${readonly};no;${users};;;${comment}"
         else
