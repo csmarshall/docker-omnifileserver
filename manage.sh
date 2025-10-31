@@ -61,6 +61,24 @@ show_sudo_cmd() {
     fi
 }
 
+# Detect UID/GID for a username from host system
+# Returns: "uid gid" if user exists, empty string if not
+detect_host_user() {
+    local username="$1"
+
+    # Try to get user info (suppress errors if user doesn't exist)
+    local user_info
+    if user_info=$(id -u "${username}" 2>/dev/null); then
+        local uid="${user_info}"
+        local gid
+        gid=$(id -g "${username}" 2>/dev/null)
+        echo "${uid} ${gid}"
+        return 0
+    fi
+
+    return 1
+}
+
 # Ensure config files exist
 touch "$USERS_CONF" "$SHARES_CONF" "$ENV_FILE" "$PASSWORDS_FILE"
 
@@ -72,8 +90,8 @@ chmod 644 "$ENV_FILE" 2>/dev/null || true
 # Command: add-user
 add_user() {
     local username="$1"
-    local uid="${2:-1000}"
-    local gid="${3:-1000}"
+    local uid="${2}"
+    local gid="${3}"
     local description="${4:-$username}"
 
     if [[ -z "$username" ]]; then
@@ -85,7 +103,33 @@ add_user() {
         error "User '$username' already exists"
     fi
 
-    # Prompt for password securely
+    # Auto-detect UID/GID from host system if not provided
+    local default_uid=1000
+    local default_gid=1000
+    if [[ -z "$uid" ]] || [[ -z "$gid" ]]; then
+        local detected
+        if detected=$(detect_host_user "$username"); then
+            local detected_uid detected_gid
+            read -r detected_uid detected_gid <<< "$detected"
+            default_uid="${detected_uid}"
+            default_gid="${detected_gid}"
+            echo ""
+            success "✓ Detected system user '$username' (UID:${detected_uid}, GID:${detected_gid})"
+            echo "Using detected values as defaults (press Enter to accept, or type custom values)"
+            echo ""
+        fi
+    fi
+
+    # Use provided values or defaults (detected or 1000)
+    uid="${uid:-${default_uid}}"
+    gid="${gid:-${default_gid}}"
+
+    # Prompt for password securely with warning
+    echo ""
+    echo "💡 Note: This password is for file sharing access only."
+    echo "   Consider using a different password than ${username}'s system login (if any)."
+    echo "   File share passwords are stored in plaintext in .env.passwords (chmod 600)."
+    echo ""
     echo -n "Enter password for user '$username': "
     read -s password
     echo
@@ -110,7 +154,7 @@ add_user() {
     echo "PASSWORD_${username}=${password}" >> "$PASSWORDS_FILE"
 
     success "Added user '$username' (UID:$uid, GID:$gid)"
-    warn "Password stored securely in .env.passwords file (chmod 600)"
+    warn "Password stored in .env.passwords file (plaintext, chmod 600)"
     warn "Run '$0 apply' to apply changes"
 }
 
@@ -475,16 +519,36 @@ ENVEOF
         error "Username cannot be empty"
     fi
 
-    read -p "UID (default: 1000): " first_uid
-    first_uid="${first_uid:-1000}"
+    # Auto-detect UID/GID from host system
+    local default_uid=1000
+    local default_gid=1000
+    local detected
+    if detected=$(detect_host_user "$first_user"); then
+        local detected_uid detected_gid
+        read -r detected_uid detected_gid <<< "$detected"
+        default_uid="${detected_uid}"
+        default_gid="${detected_gid}"
+        echo ""
+        success "✓ Detected system user '$first_user' (UID:${detected_uid}, GID:${detected_gid})"
+        echo "Using detected values as defaults (press Enter to accept, or type custom values)"
+    fi
 
-    read -p "GID (default: 1000): " first_gid
-    first_gid="${first_gid:-1000}"
+    echo ""
+    read -p "UID [${default_uid}]: " first_uid
+    first_uid="${first_uid:-${default_uid}}"
 
-    read -p "Description (default: $first_user): " first_desc
-    first_desc="${first_desc:-$first_user}"
+    read -p "GID [${default_gid}]: " first_gid
+    first_gid="${first_gid:-${default_gid}}"
 
-    # Get password
+    read -p "Description [${first_user}]: " first_desc
+    first_desc="${first_desc:-${first_user}}"
+
+    # Get password with warning
+    echo ""
+    echo "💡 Note: This password is for file sharing access only."
+    echo "   Consider using a different password than ${first_user}'s system login (if any)."
+    echo "   File share passwords are stored in plaintext in .env.passwords (chmod 600)."
+    echo ""
     echo -n "Password: "
     read -s first_password
     echo
@@ -506,7 +570,7 @@ ENVEOF
     echo "# User: $first_user" >> "$PASSWORDS_FILE"
     echo "PASSWORD_${first_user}=${first_password}" >> "$PASSWORDS_FILE"
 
-    success "✓ User '$first_user' created"
+    success "✓ User '$first_user' created (UID:${first_uid}, GID:${first_gid})"
     echo ""
 
     # Step 4: First share
