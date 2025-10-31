@@ -43,9 +43,10 @@ collect_absolute_paths() {
 }
 
 # Generate volume mounts for absolute paths
+# Maps host paths to /shares/<path> in container
 generate_volume_mounts() {
     collect_absolute_paths | while read -r abspath; do
-        echo "      - $abspath:$abspath"
+        echo "      - ${abspath}:/shares${abspath}"
     done
 }
 
@@ -78,12 +79,18 @@ generate_share_envs() {
             afp_mode="ro"
         fi
 
+        # Determine container path (absolute paths get /shares prefix)
+        local container_path="${path}"
+        if [[ "${path}" =~ ^/ ]]; then
+            container_path="/shares${path}"
+        fi
+
         if [[ "${service}" == "samba" ]]; then
             # Format: sharename;path;browseable;readonly;guest;users;admins;writelist;comment
-            echo "      - SAMBA_VOLUME_CONFIG_${name}=${path};yes;${readonly};no;${users};;;${comment}"
+            echo "      - SAMBA_VOLUME_CONFIG_${name}=${container_path};yes;${readonly};no;${users};;;${comment}"
         else
             # Format: sharename;path;mode;allow:users
-            echo "      - AFP_VOLUME_CONFIG_${name}=${path};${afp_mode};allow:${users}"
+            echo "      - AFP_VOLUME_CONFIG_${name}=${container_path};${afp_mode};allow:${users}"
         fi
     done
 }
@@ -94,7 +101,7 @@ SERVER_NAME="${SERVER_NAME:-${HOSTNAME} File Server}"
 WORKGROUP="${WORKGROUP:-WORKGROUP}"
 SAMBA_LOG_LEVEL="${SAMBA_LOG_LEVEL:-1}"
 AFP_LOG_LEVEL="${AFP_LOG_LEVEL:-info}"
-FRUIT_MODEL="${FRUIT_MODEL:-RackMac}"
+FRUIT_MODEL="${FRUIT_MODEL:-Xserve}"
 AVAHI_DISABLE_PUBLISHING="${AVAHI_DISABLE_PUBLISHING:-0}"
 HOME_DIRECTORIES_ENABLED="${HOME_DIRECTORIES_ENABLED:-no}"
 

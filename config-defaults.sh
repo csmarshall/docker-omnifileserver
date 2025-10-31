@@ -11,7 +11,7 @@ CONFIG_VARS=(
     "WORKGROUP|WORKGROUP|Windows workgroup/domain name"
 
     # macOS/Avahi settings
-    "MODEL|RackMac|Icon shown in macOS Finder|RackMac,Xserve,TimeCapsule,MacPro,MacBook,MacBookPro,MacMini,iMac"
+    "MODEL|Xserve|Icon shown in macOS Finder|Xserve,RackMac,TimeCapsule,MacPro,MacBook,MacBookPro,MacMini,iMac"
     "AVAHI_NAME|\${SERVER_NAME}|Name for mDNS/Avahi service discovery"
 
     # Logging
