@@ -46,6 +46,21 @@ warn() {
     echo -e "${YELLOW}$1${NC}"
 }
 
+# Check if running as root
+is_root() {
+    [[ "${EUID:-$(id -u)}" -eq 0 ]]
+}
+
+# Show command with sudo prefix if not root
+show_sudo_cmd() {
+    local cmd="$1"
+    if is_root; then
+        echo "  ${cmd}"
+    else
+        echo "  sudo ${cmd}"
+    fi
+}
+
 # Ensure config files exist
 touch "$USERS_CONF" "$SHARES_CONF" "$ENV_FILE" "$PASSWORDS_FILE"
 
@@ -496,14 +511,18 @@ ENVEOF
     # Step 4: First share
     echo "Step 4: Create your first share"
     echo ""
+    echo "Path options:"
+    echo "  - Relative: Directory under ./shares/ (e.g., 'media' becomes ./shares/media)"
+    echo "  - Absolute: Full path on host (e.g., '/storage/scanner')"
+    echo ""
     read -p "Share name (e.g., 'shared'): " first_share
 
     if [[ -z "$first_share" ]]; then
         error "Share name cannot be empty"
     fi
 
-    read -p "Directory name in shares/ (default: $first_share): " first_dir
-    first_dir="${first_dir:-$first_share}"
+    read -p "Path (relative or absolute, default: $first_share): " first_path
+    first_path="${first_path:-$first_share}"
 
     echo "Permissions:"
     echo "  rw - Read/write access"
@@ -544,24 +563,65 @@ ENVEOF
             ;;
     esac
 
-    # Create share directory
-    mkdir -p "${SCRIPT_DIR}/shares/${first_dir}"
+    # Handle path (absolute vs relative)
+    local share_path
+    local host_path
+    if [[ "${first_path}" =~ ^/ ]]; then
+        # Absolute path
+        share_path="${first_path}"
+        host_path="${first_path}"
+
+        # Check if exists
+        if [[ ! -d "${host_path}" ]]; then
+            warn "Warning: Absolute path '${host_path}' does not exist"
+            read -r -p "Create it now? (y/N) " -n 1
+            echo
+            if [[ ${REPLY} =~ ^[Yy]$ ]]; then
+                if mkdir -p "${host_path}" 2>/dev/null; then
+                    success "Created directory '${host_path}'"
+                else
+                    warn "Failed to create directory (permission denied). Run these commands:"
+                    show_sudo_cmd "mkdir -p ${host_path}"
+                    show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${host_path}"
+                fi
+            else
+                warn "Directory not created. Ensure it exists before starting services."
+            fi
+        fi
+    else
+        # Relative path - create under ./shares/
+        share_path="/shares/${first_path}"
+        host_path="${SCRIPT_DIR}/shares/${first_path}"
+
+        # Create share directory
+        mkdir -p "${host_path}"
+        success "✓ Created directory ${host_path}"
+    fi
 
     # Save share
-    echo "${first_share}:/shares/${first_dir}:${first_perms}:${first_user}:${first_comment}:${first_protocols}" >> "${SHARES_CONF}"
-
-    success "✓ Share '${first_share}' created at shares/${first_dir} (protocols: ${first_protocols})"
+    echo "${first_share}:${share_path}:${first_perms}:${first_user}:${first_comment}:${first_protocols}" >> "${SHARES_CONF}"
+    success "✓ Share '${first_share}' -> ${share_path} (protocols: ${first_protocols})"
     echo ""
 
-    # Step 5: Set permissions
-    echo "Step 5: Setting permissions..."
-    chown -R "${first_uid}:${first_gid}" "$SCRIPT_DIR/shares/$first_dir" 2>/dev/null || {
-        warn "Could not set ownership (may need sudo). You can fix this later with:"
-        echo "  sudo chown -R ${first_uid}:${first_gid} $SCRIPT_DIR/shares/$first_dir"
-    }
-    chmod 755 "$SCRIPT_DIR/shares/$first_dir"
-    success "✓ Permissions set"
-    echo ""
+    # Step 5: Set permissions (only for relative paths under ./shares/)
+    if [[ ! "${first_path}" =~ ^/ ]]; then
+        echo "Step 5: Setting permissions..."
+        if chown -R "${first_uid}:${first_gid}" "${host_path}" 2>/dev/null; then
+            chmod 755 "${host_path}"
+            success "✓ Permissions set"
+        else
+            warn "Could not set ownership (permission denied). Run these commands:"
+            show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${host_path}"
+            show_sudo_cmd "chmod 755 ${host_path}"
+        fi
+        echo ""
+    else
+        echo "Step 5: Permissions for absolute path"
+        warn "For absolute paths, set permissions manually:"
+        show_sudo_cmd "chown -R ${first_uid}:${first_gid} ${host_path}"
+        show_sudo_cmd "chmod 755 ${host_path}"
+        echo ""
+    fi
 
     # Step 6: Generate config
     echo "Step 6: Generating docker-compose.yml..."
@@ -592,8 +652,8 @@ ENVEOF
             echo "Running: $DOCKER_COMPOSE ps"
             $DOCKER_COMPOSE ps
         else
-            warn "Failed to start services. You may need to run with sudo:"
-            echo "  sudo $DOCKER_COMPOSE up -d"
+            warn "Failed to start services (permission denied). Run this command:"
+            show_sudo_cmd "$DOCKER_COMPOSE up -d"
         fi
     else
         warn "Services not started. Run '$DOCKER_COMPOSE up -d' when ready."
@@ -719,8 +779,8 @@ apply() {
         if $DOCKER_COMPOSE up -d; then
             success "Services restarted"
         else
-            warn "Failed to start services. You may need to run with sudo:"
-            echo "  sudo $DOCKER_COMPOSE up -d"
+            warn "Failed to start services (permission denied). Run this command:"
+            show_sudo_cmd "$DOCKER_COMPOSE up -d"
         fi
     else
         warn "Changes generated but not applied. Run '$DOCKER_COMPOSE up -d' to apply."
