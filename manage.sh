@@ -810,6 +810,83 @@ disable_homes() {
     warn "Run '$0 apply' to regenerate configuration and restart services"
 }
 
+# Command: configure
+configure() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║           Reconfigure Server Settings                     ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    if [[ ! -f "$ENV_FILE" ]]; then
+        error ".env file not found. Run '$0 init' first."
+    fi
+
+    # Source existing configuration
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+
+    # Source configuration defaults
+    source "$SCRIPT_DIR/config-defaults.sh"
+
+    # Backup current .env
+    cp "$ENV_FILE" "$ENV_FILE.bak"
+
+    echo "Current configuration will be updated."
+    echo "Press Enter to keep current value, or type new value."
+    echo "Backup saved to: .env.bak"
+    echo ""
+
+    # Create new .env file
+    cat > "$ENV_FILE" << 'ENVEOF'
+# Server Configuration
+# Updated by manage.sh configure on $(date)
+ENVEOF
+
+    # Iterate through config variables and prompt for each
+    for config in "${CONFIG_VARS[@]}"; do
+        IFS='|' read -r name default desc options <<< "$config"
+
+        # Get current value from environment (already sourced)
+        local current_value="${!name}"
+
+        # If no current value, use default
+        if [[ -z "${current_value}" ]]; then
+            # Evaluate default (expand variables like ${SERVER_NAME})
+            # shellcheck disable=SC2154
+            eval "current_value=\"${default}\""
+        fi
+
+        # Show description and options if available
+        echo ""
+        echo "${desc}"
+        if [[ -n "${options}" ]]; then
+            echo "Options: ${options}"
+        fi
+
+        # Prompt with current value as default
+        read -r -p "${name} [${current_value}]: " user_value
+
+        # Use current value if empty
+        final_value="${user_value:-${current_value}}"
+
+        # Append to .env (quote value to handle spaces)
+        echo "${name}=\"${final_value}\"" >> "$ENV_FILE"
+    done
+
+    echo "" >> "$ENV_FILE"
+    success "✓ Configuration updated in .env"
+    echo ""
+
+    # Ask if user wants to apply changes
+    read -p "Regenerate docker-compose.yml and restart services? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        apply
+    else
+        warn "Configuration updated but not applied. Run '$0 apply' when ready."
+    fi
+}
+
 # Command: apply
 apply() {
     echo "Generating docker-compose.yml from configuration..."
@@ -1020,6 +1097,12 @@ Apply Changes:
   apply
       Regenerate docker-compose.yml and optionally restart services
 
+  configure
+      Reconfigure server settings (.env file)
+      Interactive wizard to update server name, workgroup, logging, etc.
+      Shows current values as defaults
+      Example: $0 configure
+
 Reset Configuration:
   reset
       Remove all configuration and optionally create a backup archive
@@ -1080,6 +1163,9 @@ case "${1:-help}" in
         ;;
     apply)
         apply
+        ;;
+    configure)
+        configure
         ;;
     reset)
         reset
