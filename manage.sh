@@ -493,16 +493,42 @@ ENVEOF
         error "Permissions must be 'rw' or 'ro'"
     fi
 
-    read -p "Description (default: $first_share): " first_comment
-    first_comment="${first_comment:-$first_share}"
+    read -r -p "Description (default: ${first_share}): " first_comment
+    first_comment="${first_comment:-${first_share}}"
+
+    # Protocol selection
+    echo ""
+    echo "Select protocols for this share:"
+    echo "  1. Both SMB and AFP (Windows + Mac)"
+    echo "  2. SMB only (Windows/Linux)"
+    echo "  3. AFP only (Mac)"
+    read -r -p "Choice [1]: " first_protocol_choice
+    first_protocol_choice="${first_protocol_choice:-1}"
+
+    local first_protocols
+    case "${first_protocol_choice}" in
+        1)
+            first_protocols="smb,afp"
+            ;;
+        2)
+            first_protocols="smb"
+            ;;
+        3)
+            first_protocols="afp"
+            ;;
+        *)
+            warn "Invalid choice. Defaulting to both protocols (smb,afp)"
+            first_protocols="smb,afp"
+            ;;
+    esac
 
     # Create share directory
-    mkdir -p "$SCRIPT_DIR/shares/$first_dir"
+    mkdir -p "${SCRIPT_DIR}/shares/${first_dir}"
 
     # Save share
-    echo "$first_share:/shares/$first_dir:$first_perms:$first_user:$first_comment" >> "$SHARES_CONF"
+    echo "${first_share}:/shares/${first_dir}:${first_perms}:${first_user}:${first_comment}:${first_protocols}" >> "${SHARES_CONF}"
 
-    success "✓ Share '$first_share' created at shares/$first_dir"
+    success "✓ Share '${first_share}' created at shares/${first_dir} (protocols: ${first_protocols})"
     echo ""
 
     # Step 5: Set permissions
