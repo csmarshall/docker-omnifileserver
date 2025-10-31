@@ -365,12 +365,34 @@ init() {
     # Check if already initialized
     if [[ -f "$COMPOSE_FILE" ]] || grep -q "^[^#]" "$USERS_CONF" 2>/dev/null || grep -q "^[^#]" "$SHARES_CONF" 2>/dev/null; then
         warn "Warning: Configuration already exists!"
-        read -p "Continue anyway? This may overwrite existing setup. (y/N) " -n 1 -r
+        echo ""
+        echo "Options:"
+        echo "  1. Cancel and keep existing configuration"
+        echo "  2. Reset configuration (with optional backup) and start fresh"
+        echo "  3. Continue anyway (may cause conflicts)"
+        echo ""
+        read -p "Choose [1]: " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Initialization cancelled."
-            exit 0
-        fi
+
+        case "${REPLY:-1}" in
+            1|"")
+                echo "Initialization cancelled."
+                exit 0
+                ;;
+            2)
+                echo ""
+                reset
+                echo ""
+                echo "Continuing with initialization..."
+                echo ""
+                ;;
+            3)
+                warn "Continuing with existing configuration..."
+                ;;
+            *)
+                error "Invalid choice"
+                ;;
+        esac
     fi
 
     echo "This wizard will help you set up your file server."
@@ -693,6 +715,115 @@ apply() {
     fi
 }
 
+# Command: reset
+reset() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║                  RESET CONFIGURATION                       ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+    warn "⚠️  WARNING: This will remove ALL configuration and data!"
+    echo ""
+    echo "The following will be deleted:"
+    echo "  • Configuration files (.env, .env.passwords, users.conf, shares.conf)"
+    echo "  • Generated docker-compose.yml"
+    echo "  • shares/ directory and all files"
+    echo "  • config/ directory (Samba and Netatalk configs)"
+    echo "  • Running containers will be stopped and removed"
+    echo ""
+
+    # Confirm reset
+    read -r -p "Are you sure you want to reset? (type 'yes' to confirm): " confirm
+    if [[ "${confirm}" != "yes" ]]; then
+        warn "Reset cancelled"
+        return
+    fi
+
+    echo ""
+
+    # Ask about archiving
+    read -r -p "Create backup archive before deleting? (Y/n): " -n 1
+    echo
+
+    local archive_created=false
+    if [[ ! ${REPLY} =~ ^[Nn]$ ]]; then
+        # Create timestamped archive
+        local timestamp
+        timestamp=$(date +%Y%m%d-%H%M%S)
+        local archive_name="omnifileserver-config-backup-${timestamp}.tar.gz"
+
+        echo "Creating backup archive: ${archive_name}"
+
+        # Build list of files/dirs to archive (only if they exist)
+        local items_to_archive=()
+        [[ -f "${ENV_FILE}" ]] && items_to_archive+=(".env")
+        [[ -f "${PASSWORDS_FILE}" ]] && items_to_archive+=(".env.passwords")
+        [[ -f "${USERS_CONF}" ]] && items_to_archive+=("users.conf")
+        [[ -f "${SHARES_CONF}" ]] && items_to_archive+=("shares.conf")
+        [[ -f "${COMPOSE_FILE}" ]] && items_to_archive+=("docker-compose.yml")
+        [[ -d "${SCRIPT_DIR}/shares" ]] && items_to_archive+=("shares/")
+        [[ -d "${SCRIPT_DIR}/config" ]] && items_to_archive+=("config/")
+
+        if [[ ${#items_to_archive[@]} -eq 0 ]]; then
+            warn "No files to archive (nothing configured yet)"
+        else
+            # Create archive
+            cd "${SCRIPT_DIR}" || error "Failed to cd to ${SCRIPT_DIR}"
+            if tar -czf "${archive_name}" "${items_to_archive[@]}" 2>/dev/null; then
+                success "✓ Backup created: ${SCRIPT_DIR}/${archive_name}"
+                archive_created=true
+            else
+                warn "Failed to create archive, continuing with reset..."
+            fi
+        fi
+        echo ""
+    fi
+
+    # Stop and remove containers
+    if [[ -f "${COMPOSE_FILE}" ]]; then
+        echo "Stopping and removing containers..."
+        cd "${SCRIPT_DIR}" || error "Failed to cd to ${SCRIPT_DIR}"
+        ${DOCKER_COMPOSE} down 2>/dev/null || warn "Could not stop containers (may not be running)"
+    fi
+
+    # Remove files
+    echo "Removing configuration files..."
+    [[ -f "${ENV_FILE}" ]] && rm -f "${ENV_FILE}" && echo "  • Removed .env"
+    [[ -f "${PASSWORDS_FILE}" ]] && rm -f "${PASSWORDS_FILE}" && echo "  • Removed .env.passwords"
+    [[ -f "${USERS_CONF}" ]] && rm -f "${USERS_CONF}" && echo "  • Removed users.conf"
+    [[ -f "${SHARES_CONF}" ]] && rm -f "${SHARES_CONF}" && echo "  • Removed shares.conf"
+    [[ -f "${COMPOSE_FILE}" ]] && rm -f "${COMPOSE_FILE}" && echo "  • Removed docker-compose.yml"
+
+    # Remove directories
+    if [[ -d "${SCRIPT_DIR}/shares" ]]; then
+        echo "  • Removing shares/ directory..."
+        rm -rf "${SCRIPT_DIR}/shares"
+    fi
+
+    if [[ -d "${SCRIPT_DIR}/config" ]]; then
+        echo "  • Removing config/ directory..."
+        rm -rf "${SCRIPT_DIR}/config"
+    fi
+
+    # Remove backup files from sed operations
+    rm -f "${SCRIPT_DIR}"/*.bak 2>/dev/null
+
+    echo ""
+    success "✓ Reset complete!"
+
+    if [[ "${archive_created}" == "true" ]]; then
+        echo ""
+        echo "Your configuration backup is saved at:"
+        echo "  ${SCRIPT_DIR}/omnifileserver-config-backup-${timestamp}.tar.gz"
+        echo ""
+        echo "To restore from backup:"
+        echo "  cd ${SCRIPT_DIR}"
+        echo "  tar -xzf omnifileserver-config-backup-${timestamp}.tar.gz"
+    fi
+
+    echo ""
+    echo "To set up again, run: $0 init"
+}
+
 # Command: help
 show_help() {
     cat << EOF
@@ -754,6 +885,13 @@ Apply Changes:
   apply
       Regenerate docker-compose.yml and optionally restart services
 
+Reset Configuration:
+  reset
+      Remove all configuration and optionally create a backup archive
+      Stops containers, removes all config files, shares/, config/, and compose file
+      Optionally creates timestamped config backup: omnifileserver-config-backup-YYYYMMDD-HHMMSS.tar.gz
+      Example: $0 reset
+
 Help:
   help
       Show this help message
@@ -807,6 +945,9 @@ case "${1:-help}" in
         ;;
     apply)
         apply
+        ;;
+    reset)
+        reset
         ;;
     help|--help|-h)
         show_help

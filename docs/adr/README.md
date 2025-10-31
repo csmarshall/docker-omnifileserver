@@ -41,6 +41,7 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 | [012](012-protocol-specific-shares.md) | Protocol-Specific Shares | Accepted |
 | [013](013-rejected-docker-compose-secrets.md) | Rejected Docker Compose Secrets for Password Management | Rejected |
 | [014](014-colon-separated-config-format.md) | Colon-Separated Config File Format | Accepted |
+| [015](015-reset-with-optional-backup.md) | Reset Configuration with Optional Backup | Accepted |
 
 ## Creating New ADRs
 
