@@ -26,6 +26,7 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [000](000-project-purpose-and-naming.md) | **Project Purpose, Naming, and Design Philosophy (READ THIS FIRST)** | Accepted |
 | [001](001-separate-password-and-config-files.md) | Separate Password and Configuration Files | Accepted |
 | [002](002-cli-env-file-flags-for-substitution.md) | Use Docker Compose CLI --env-file Flags for Variable Substitution | Accepted |
 | [003](003-use-servercontainers-images.md) | Use Pre-Built ServerContainers Images | Accepted |
