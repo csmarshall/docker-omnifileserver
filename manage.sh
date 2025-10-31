@@ -984,13 +984,17 @@ reset() {
     echo
 
     local archive_created=false
+    local timestamp=""
     if [[ ! ${REPLY} =~ ^[Nn]$ ]]; then
+        # Create backups directory if it doesn't exist
+        mkdir -p "${SCRIPT_DIR}/backups"
+
         # Create timestamped archive
-        local timestamp
         timestamp=$(date +%Y%m%d-%H%M%S)
         local archive_name="omnifileserver-config-backup-${timestamp}.tar.gz"
+        local archive_path="backups/${archive_name}"
 
-        echo "Creating backup archive: ${archive_name}"
+        echo "Creating backup archive: ${archive_path}"
 
         # Build list of files/dirs to archive (only if they exist)
         local items_to_archive=()
@@ -1007,8 +1011,8 @@ reset() {
         else
             # Create archive
             cd "${SCRIPT_DIR}" || error "Failed to cd to ${SCRIPT_DIR}"
-            if tar -czf "${archive_name}" "${items_to_archive[@]}" 2>/dev/null; then
-                success "✓ Backup created: ${SCRIPT_DIR}/${archive_name}"
+            if tar -czf "${archive_path}" "${items_to_archive[@]}" 2>/dev/null; then
+                success "✓ Backup created: ${SCRIPT_DIR}/${archive_path}"
                 archive_created=true
             else
                 warn "Failed to create archive, continuing with reset..."
@@ -1053,11 +1057,11 @@ reset() {
     if [[ "${archive_created}" == "true" ]]; then
         echo ""
         echo "Your configuration backup is saved at:"
-        echo "  ${SCRIPT_DIR}/omnifileserver-config-backup-${timestamp}.tar.gz"
+        echo "  ${SCRIPT_DIR}/backups/omnifileserver-config-backup-${timestamp}.tar.gz"
         echo ""
         echo "To restore from backup:"
         echo "  cd ${SCRIPT_DIR}"
-        echo "  tar -xzf omnifileserver-config-backup-${timestamp}.tar.gz"
+        echo "  tar -xzf backups/omnifileserver-config-backup-${timestamp}.tar.gz"
     fi
 
     echo ""
@@ -1329,7 +1333,7 @@ Reset Configuration:
   reset
       Remove all configuration and optionally create a backup archive
       Stops containers, removes all config files, shares/, config/, and compose file
-      Optionally creates timestamped config backup: omnifileserver-config-backup-YYYYMMDD-HHMMSS.tar.gz
+      Backups saved to: backups/omnifileserver-config-backup-YYYYMMDD-HHMMSS.tar.gz
       Example: $0 reset
 
 Service Discovery:

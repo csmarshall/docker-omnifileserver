@@ -37,18 +37,21 @@ Unified management for multiple file-serving protocols (SMB/CIFS and AFP) via Do
 docker-omnifileserver/
 ├── manage.sh              # Management script (add users, shares, apply changes)
 ├── generate-compose.sh    # Generates docker-compose.yml from config files
-├── users.conf             # User definitions (without passwords)
-├── shares.conf            # Share definitions
-├── .env                   # General config (optional, 644)
+├── users.conf             # User definitions (without passwords, git-ignored)
+├── shares.conf            # Share definitions (git-ignored)
+├── .env                   # General config (git-ignored)
 ├── .env.passwords         # Passwords only (chmod 600, git-ignored)
+├── .env.example           # Example config template
 ├── .gitignore             # Protects sensitive files
-├── docker-compose.yml     # Generated service definitions
+├── docker-compose.yml     # Generated service definitions (git-ignored)
+├── omnifileserver.service # Avahi service file for host installation
 ├── README.md              # This file
-├── config/                # Persistent configuration (auto-generated)
-│   ├── avahi/            # Avahi service definitions
+├── backups/               # Config backups (created by reset command, git-ignored)
+│   └── omnifileserver-config-backup-YYYYMMDD-HHMMSS.tar.gz
+├── config/                # Persistent configuration (auto-generated, git-ignored)
 │   ├── samba/            # Samba generated configs
 │   └── netatalk/         # Netatalk generated configs
-└── shares/                # Actual shared data
+└── shares/                # Actual shared data (git-ignored)
     ├── shared/           # Example: Read-write shared folder
     └── media/            # Example: Read-only media library
 ```
@@ -312,6 +315,33 @@ After modifying users or shares, apply changes:
 ```
 
 This regenerates `docker-compose.yml` and prompts to restart services.
+
+#### Manual Configuration Editing
+
+You can manually edit configuration files if needed:
+
+```bash
+# Edit files directly
+vim users.conf
+vim shares.conf
+vim .env
+
+# Regenerate docker-compose.yml without restarting
+./generate-compose.sh
+
+# Then restart when ready
+docker-compose restart
+
+# Or combine both steps
+./manage.sh apply
+```
+
+**Files you can manually edit:**
+- `users.conf` - User definitions (format: `username:uid:gid:description`)
+- `shares.conf` - Share definitions (format: `name:path:permissions:users:comment:protocols`)
+- `.env` - Server configuration (SERVER_NAME, WORKGROUP, MODEL, logging levels)
+
+**Note:** Passwords are in `.env.passwords` and should use `./manage.sh change-password` instead of manual editing.
 
 #### Docker Operations
 
