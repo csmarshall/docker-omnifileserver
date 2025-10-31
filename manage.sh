@@ -1064,6 +1064,196 @@ reset() {
     echo "To set up again, run: $0 init"
 }
 
+# Command: setup-avahi
+setup_avahi() {
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║             AVAHI SERVICE DISCOVERY SETUP                  ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    # Check if service file exists
+    if [[ ! -f "${SCRIPT_DIR}/omnifileserver.service" ]]; then
+        error "Service file not found: ${SCRIPT_DIR}/omnifileserver.service"
+    fi
+
+    echo "Avahi service file: ${SCRIPT_DIR}/omnifileserver.service"
+    echo ""
+
+    # Detect OS
+    local os_type
+    case "$(uname)" in
+        Darwin)
+            os_type="macOS"
+            ;;
+        Linux)
+            os_type="Linux"
+            ;;
+        *)
+            os_type="Unknown"
+            ;;
+    esac
+
+    echo "Detected OS: ${os_type}"
+    echo ""
+
+    # Check for Avahi directory
+    local avahi_dir="/etc/avahi/services"
+    local avahi_exists=false
+    if [[ -d "${avahi_dir}" ]]; then
+        avahi_exists=true
+        echo "Avahi directory: ${avahi_dir} ✓ (exists)"
+    else
+        echo "Avahi directory: ${avahi_dir} ✗ (not found)"
+    fi
+    echo ""
+
+    # Detect Avahi/mDNS installation
+    local avahi_installed=false
+    local install_cmd=""
+
+    if [[ "${os_type}" == "macOS" ]]; then
+        # macOS has mDNSResponder built-in
+        if pgrep -x "mDNSResponder" > /dev/null; then
+            avahi_installed=true
+            echo "mDNS service: mDNSResponder ✓ (running)"
+        else
+            echo "mDNS service: mDNSResponder ✗ (not running)"
+        fi
+    elif [[ "${os_type}" == "Linux" ]]; then
+        # Check for avahi-daemon
+        if command -v avahi-daemon &> /dev/null; then
+            avahi_installed=true
+            if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+                echo "Avahi daemon: ✓ (installed and running)"
+            else
+                echo "Avahi daemon: ⚠ (installed but not running)"
+            fi
+        else
+            echo "Avahi daemon: ✗ (not installed)"
+
+            # Detect package manager
+            if command -v apt-get &> /dev/null; then
+                install_cmd="sudo apt-get install avahi-daemon"
+            elif command -v dnf &> /dev/null; then
+                install_cmd="sudo dnf install avahi"
+            elif command -v yum &> /dev/null; then
+                install_cmd="sudo yum install avahi"
+            elif command -v pacman &> /dev/null; then
+                install_cmd="sudo pacman -S avahi"
+            fi
+        fi
+    fi
+    echo ""
+
+    # Provide instructions based on detection
+    if [[ "${os_type}" == "macOS" ]]; then
+        if [[ "${avahi_installed}" == "true" ]]; then
+            echo "═══════════════════════════════════════════════════════════"
+            echo "  SETUP INSTRUCTIONS (macOS)"
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+            if [[ "${avahi_exists}" == "true" ]]; then
+                echo "Copy the service file to Avahi directory:"
+                echo "  sudo cp ${SCRIPT_DIR}/omnifileserver.service ${avahi_dir}/"
+            else
+                echo "Create Avahi directory and copy service file:"
+                echo "  sudo mkdir -p ${avahi_dir}"
+                echo "  sudo cp ${SCRIPT_DIR}/omnifileserver.service ${avahi_dir}/"
+            fi
+            echo ""
+            echo "Reload mDNSResponder:"
+            echo "  sudo killall -HUP mDNSResponder"
+            echo ""
+            echo "Your server will appear automatically in Finder's Network sidebar."
+        else
+            warn "mDNSResponder not running. This is unusual for macOS."
+            echo "Try: sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.mDNSResponder.plist"
+        fi
+
+    elif [[ "${os_type}" == "Linux" ]]; then
+        if [[ "${avahi_installed}" == "false" ]]; then
+            echo "═══════════════════════════════════════════════════════════"
+            echo "  STEP 1: INSTALL AVAHI"
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+            if [[ -n "${install_cmd}" ]]; then
+                echo "Install Avahi daemon:"
+                echo "  ${install_cmd}"
+            else
+                echo "Install Avahi using your package manager:"
+                echo "  Ubuntu/Debian:  sudo apt-get install avahi-daemon"
+                echo "  Fedora/RHEL:    sudo dnf install avahi"
+                echo "  Arch:           sudo pacman -S avahi"
+            fi
+            echo ""
+            echo "Enable and start Avahi:"
+            echo "  sudo systemctl enable --now avahi-daemon"
+            echo ""
+        fi
+
+        echo "═══════════════════════════════════════════════════════════"
+        if [[ "${avahi_installed}" == "false" ]]; then
+            echo "  STEP 2: COPY SERVICE FILE"
+        else
+            echo "  SETUP INSTRUCTIONS (Linux)"
+        fi
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+        if [[ "${avahi_exists}" == "true" ]]; then
+            echo "Copy the service file to Avahi directory:"
+            echo "  sudo cp ${SCRIPT_DIR}/omnifileserver.service ${avahi_dir}/"
+        else
+            echo "Create Avahi directory and copy service file:"
+            echo "  sudo mkdir -p ${avahi_dir}"
+            echo "  sudo cp ${SCRIPT_DIR}/omnifileserver.service ${avahi_dir}/"
+        fi
+        echo ""
+        echo "Restart Avahi daemon:"
+        echo "  sudo systemctl restart avahi-daemon"
+        echo ""
+        echo "Verify service is running:"
+        echo "  sudo systemctl status avahi-daemon"
+        echo ""
+        echo "Test service discovery:"
+        echo "  avahi-browse -a"
+
+    else
+        warn "Unknown operating system. Manual setup required."
+        echo ""
+        echo "Copy ${SCRIPT_DIR}/omnifileserver.service to your system's Avahi directory"
+        echo "(usually /etc/avahi/services/) and restart the Avahi daemon."
+    fi
+
+    echo ""
+    echo "═══════════════════════════════════════════════════════════"
+    echo "  WHAT THIS DOES"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "• Advertises SMB and AFP services on your network"
+    echo "• Makes your server appear in Finder/Network browsers"
+    echo "• Shows modern Mac Pro rack-mount icon in macOS"
+    echo "• One Avahi daemon advertising multiple services"
+    echo "• No hostname conflicts (ADR-019)"
+    echo ""
+
+    if [[ "${avahi_installed}" == "false" ]] && [[ "${os_type}" == "Linux" ]]; then
+        warn "⚠️  Service discovery will NOT work until Avahi is installed!"
+    fi
+
+    echo "═══════════════════════════════════════════════════════════"
+    echo "  IF YOU SKIP THIS STEP"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "Services still work via direct IP connection:"
+    echo "  macOS: Finder → Go → Connect to Server"
+    echo "         smb://$(hostname) or afp://$(hostname)"
+    echo ""
+    echo "  Linux: mount -t cifs //$(hostname)/sharename /mnt/point"
+    echo ""
+    echo "But your server won't appear automatically in network browsers."
+    echo ""
+}
+
 # Command: help
 show_help() {
     cat << EOF
@@ -1142,6 +1332,13 @@ Reset Configuration:
       Optionally creates timestamped config backup: omnifileserver-config-backup-YYYYMMDD-HHMMSS.tar.gz
       Example: $0 reset
 
+Service Discovery:
+  setup-avahi
+      Set up Avahi/mDNS service discovery on the host system
+      Auto-detects OS and provides platform-specific installation instructions
+      Enables automatic server discovery in Finder/Network browsers
+      Example: $0 setup-avahi
+
 Help:
   help
       Show this help message
@@ -1201,6 +1398,9 @@ case "${1:-help}" in
         ;;
     reset)
         reset
+        ;;
+    setup-avahi)
+        setup_avahi
         ;;
     help|--help|-h)
         show_help

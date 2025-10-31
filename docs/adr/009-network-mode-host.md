@@ -1,8 +1,25 @@
 # ADR-009: Network Mode Host for mDNS/Avahi Service Discovery
 
-**Status**: Accepted
+**Status**: Superseded by ADR-019
 
 **Date**: 2025-01-30
+
+---
+
+**⚠️ This ADR has been superseded by [ADR-019: Host Avahi for Service Discovery](019-host-avahi-for-service-discovery.md)**
+
+**What was wrong:**
+- Running Avahi in both containers causes hostname conflicts ("Rosa-35")
+- Service discovery fails when both containers advertise the same hostname
+- The assumption that "different service types = no conflict" was incorrect
+
+**The fix (ADR-019):**
+- Disable Avahi in both containers
+- Run Avahi on the host system
+- Use `./manage.sh setup-avahi` wizard for guided setup
+- One Avahi daemon advertising multiple services (SMB + AFP)
+
+---
 
 ## Context
 

@@ -35,7 +35,7 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 | [006](006-manage-sh-wrapper-for-docker-compose.md) | manage.sh Wrapper for Docker Compose Operations | Accepted |
 | [007](007-os-auto-detection-for-home-directories.md) | OS Auto-Detection for Home Directories | Accepted |
 | [008](008-generated-docker-compose.md) | Generated docker-compose.yml (Never Manual Editing) | Accepted |
-| [009](009-network-mode-host.md) | Network Mode Host for mDNS/Avahi Service Discovery | Accepted |
+| [009](009-network-mode-host.md) | Network Mode Host for mDNS/Avahi Service Discovery | Superseded by ADR-019 |
 | [010](010-two-separate-containers.md) | Two Separate Containers vs One Combined | Accepted |
 | [011](011-bash-scripting-for-tooling.md) | Bash Scripts for Tooling | Accepted |
 | [012](012-protocol-specific-shares.md) | Protocol-Specific Shares | Accepted |
@@ -45,6 +45,7 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 | [016](016-absolute-paths-only-no-project-shares.md) | Absolute Paths Only (No Project ./shares/ Directory) | Accepted |
 | [017](017-auto-detect-uid-gid-from-host.md) | Auto-Detect UID/GID from Host System Users | Accepted |
 | [018](018-per-user-variable-paths.md) | Per-User Variable Paths with %U | Accepted |
+| [019](019-host-avahi-for-service-discovery.md) | Host Avahi for Service Discovery | Accepted |
 
 ## Creating New ADRs
 

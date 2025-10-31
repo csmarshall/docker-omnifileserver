@@ -128,7 +128,7 @@ SERVER_NAME="${SERVER_NAME:-${HOSTNAME} File Server}"
 WORKGROUP="${WORKGROUP:-WORKGROUP}"
 SAMBA_LOG_LEVEL="${SAMBA_LOG_LEVEL:-1}"
 AFP_LOG_LEVEL="${AFP_LOG_LEVEL:-info}"
-FRUIT_MODEL="${FRUIT_MODEL:-MacPro7,1@ECOLOR=226,226,224}"
+MODEL="${MODEL:-MacPro7,1@ECOLOR=226,226,224}"
 AVAHI_DISABLE_PUBLISHING="${AVAHI_DISABLE_PUBLISHING:-0}"
 HOME_DIRECTORIES_ENABLED="${HOME_DIRECTORIES_ENABLED:-no}"
 
@@ -187,14 +187,14 @@ cat >> "$COMPOSE_FILE" << EOF
       - SAMBA_CONF_SERVER_STRING=${SERVER_NAME}
       - SAMBA_CONF_WORKGROUP=${WORKGROUP}
 
-      # Avahi/mDNS service discovery
-      - AVAHI_NAME=${SERVER_NAME}
-      - AVAHI_DISABLE_PUBLISHING=${AVAHI_DISABLE_PUBLISHING}
+      # Avahi/mDNS service discovery (disabled in container, use host Avahi)
+      # Run: ./manage.sh setup-avahi for installation instructions
+      - AVAHI_DISABLE=1
 
       # Advanced options
       - SAMBA_CONF_LOG_LEVEL=${SAMBA_LOG_LEVEL}
       - SAMBA_GLOBAL_CONFIG_fruit_metadata=stream
-      - SAMBA_GLOBAL_CONFIG_fruit_model=${FRUIT_MODEL}
+      - SAMBA_GLOBAL_CONFIG_fruit_model=${MODEL}
       - SAMBA_GLOBAL_CONFIG_vfs_objects=catia fruit streams_xattr
 
       # User accounts (generated from users.conf)
@@ -231,6 +231,7 @@ cat >> "$COMPOSE_FILE" << EOF
     volumes:
       - ${SCRIPT_DIR}/shares:/shares
       - ${SCRIPT_DIR}/config/netatalk:/config
+      - /dev/null:/external/avahi
 EOF
 
 # Add absolute path volume mounts
@@ -250,12 +251,13 @@ cat >> "$COMPOSE_FILE" << EOF
       - AFP_NAME=${SERVER_NAME}
       - AFP_WORKGROUP=${WORKGROUP}
 
-      # Avahi/mDNS service discovery
-      - AVAHI_NAME=${SERVER_NAME}
-      - AVAHI_DISABLE_PUBLISHING=${AVAHI_DISABLE_PUBLISHING}
+      # Avahi/mDNS service discovery (disabled in container, use host Avahi)
+      # Run: ./manage.sh setup-avahi for installation instructions
+      # (Disabled by mounting /dev/null to /external/avahi)
 
       # Advanced options
       - AFP_LOGLEVEL=${AFP_LOG_LEVEL}
+      - MODEL=${MODEL}
 
       # User accounts (generated from users.conf)
 EOF

@@ -198,7 +198,33 @@ This will:
 - Configure RackMac icon for macOS clients
 - Prompt to restart Docker services
 
-#### 5. Verify Services
+#### 5. Set Up Service Discovery (Optional but Recommended)
+
+Enable automatic server discovery in Finder and network browsers:
+
+```bash
+./manage.sh setup-avahi
+```
+
+This command:
+- Auto-detects your OS (macOS/Linux)
+- Checks if Avahi is installed
+- Provides platform-specific installation instructions
+- Shows exact commands to copy the service file
+
+**What you get:**
+- Server appears automatically in Finder's Network sidebar
+- No need to manually type `smb://hostname`
+- Modern Mac Pro rack-mount icon in macOS
+
+**If you skip this step:**
+- Services still work fine
+- You'll need to manually connect: `smb://hostname` or `afp://hostname`
+- Server won't appear automatically in network browsers
+
+See the wizard output for your platform's specific instructions.
+
+#### 6. Verify Services
 
 ```bash
 # Check containers are running
@@ -212,6 +238,14 @@ smbclient -L localhost -N
 
 # Test AFP from macOS Finder
 # Open Finder → Go → Connect to Server → afp://hostname
+
+# Verify Avahi is advertising services (if you set it up)
+# Linux:
+avahi-browse -a
+
+# macOS:
+dns-sd -B _smb._tcp
+dns-sd -B _afpovertcp._tcp
 ```
 
 ## Usage
@@ -466,11 +500,13 @@ volumes:
 ```
 
 **macOS icon options:**
-Edit `generate-compose.sh` and change `fruit_model`:
-- `RackMac` - Rack-mounted server icon (default)
-- `Xserve` - Xserve icon
-- `TimeCapsule` - Time Capsule icon
-- `MacPro` - Mac Pro icon
+Configure during `init` or change via `./manage.sh configure`:
+- `MacPro7,1@ECOLOR=226,226,224` - 2019 Mac Pro rack-mount (default, recommended)
+- `MacPro` - Classic Mac Pro tower
+- `MacPro6,1` - 2013 Mac Pro (trash can)
+- `Xserve` - Xserve (broken in macOS Big Sur+)
+- `TimeCapsule` - Time Capsule
+- `iMac`, `Macmini`, etc.
 
 ## Security Considerations
 
@@ -502,10 +538,17 @@ Edit `generate-compose.sh` and change `fruit_model`:
 
 ### Shares not appearing on network
 
-1. Check Avahi container is running: `docker-compose logs avahi`
-2. Verify host networking mode is enabled
-3. Ensure firewall allows mDNS (port 5353/udp)
-4. Check if Avahi is installed/running on host (may conflict)
+1. Run the setup wizard: `./manage.sh setup-avahi`
+2. Verify host Avahi is running:
+   - Linux: `systemctl status avahi-daemon`
+   - macOS: `pgrep mDNSResponder`
+3. Check service file exists: `ls /etc/avahi/services/omnifileserver.service`
+4. Verify services are being advertised:
+   - Linux: `avahi-browse -a`
+   - macOS: `dns-sd -B _smb._tcp`
+5. Ensure firewall allows mDNS (port 5353/udp)
+
+**If you skipped Avahi setup:** Manually connect using `smb://hostname` or `afp://hostname`
 
 ### Cannot connect to shares
 
@@ -543,13 +586,17 @@ Edit `generate-compose.sh` and change `fruit_model`:
    ```bash
    ./manage.sh apply
    ```
-6. Start services: `docker-compose up -d`
+6. Set up Avahi on new host for service discovery:
+   ```bash
+   ./manage.sh setup-avahi
+   ```
+7. Start services: `docker-compose up -d`
 
 ## References
 
-- [servercontainers/samba](https://github.com/ServerContainers/samba)
-- [servercontainers/netatalk](https://github.com/ServerContainers/netatalk)
-- [servercontainers/avahi](https://github.com/ServerContainers/avahi)
+- [ServerContainers Samba](https://github.com/ServerContainers/samba) - Docker image for Samba/SMB
+- [ServerContainers Netatalk](https://github.com/ServerContainers/netatalk) - Docker image for AFP
+- [Avahi](https://www.avahi.org/) - mDNS/DNS-SD service discovery (runs on host)
 
 ## License
 

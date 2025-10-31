@@ -1,0 +1,25 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <!-- %h = hostname from system -->
+  <name replace-wildcards="yes">%h</name>
+
+  <!-- SMB/Samba file sharing -->
+  <service>
+    <type>_smb._tcp</type>
+    <port>445</port>
+  </service>
+
+  <!-- AFP/Netatalk file sharing -->
+  <service>
+    <type>_afpovertcp._tcp</type>
+    <port>548</port>
+  </service>
+
+  <!-- macOS Finder icon (2019 Mac Pro rack-mount) -->
+  <service>
+    <type>_device-info._tcp</type>
+    <port>0</port>
+    <txt-record>model=MacPro7,1@ECOLOR=226,226,224</txt-record>
+  </service>
+</service-group>
