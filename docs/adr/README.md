@@ -34,6 +34,13 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 | [005](005-absolute-paths-with-script-dir.md) | Absolute Paths with SCRIPT_DIR for Portability | Accepted |
 | [006](006-manage-sh-wrapper-for-docker-compose.md) | manage.sh Wrapper for Docker Compose Operations | Accepted |
 | [007](007-os-auto-detection-for-home-directories.md) | OS Auto-Detection for Home Directories | Accepted |
+| [008](008-generated-docker-compose.md) | Generated docker-compose.yml (Never Manual Editing) | Accepted |
+| [009](009-network-mode-host.md) | Network Mode Host for mDNS/Avahi Service Discovery | Accepted |
+| [010](010-two-separate-containers.md) | Two Separate Containers vs One Combined | Accepted |
+| [011](011-bash-scripting-for-tooling.md) | Bash Scripts for Tooling | Accepted |
+| [012](012-protocol-specific-shares.md) | Protocol-Specific Shares | Accepted |
+| [013](013-rejected-docker-compose-secrets.md) | Rejected Docker Compose Secrets for Password Management | Rejected |
+| [014](014-colon-separated-config-format.md) | Colon-Separated Config File Format | Accepted |
 
 ## Creating New ADRs
 
