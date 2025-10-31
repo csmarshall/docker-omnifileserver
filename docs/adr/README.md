@@ -44,6 +44,7 @@ We use a simplified MADR (Markdown Architectural Decision Record) format with th
 | [015](015-reset-with-optional-backup.md) | Reset Configuration with Optional Backup | Accepted |
 | [016](016-absolute-paths-only-no-project-shares.md) | Absolute Paths Only (No Project ./shares/ Directory) | Accepted |
 | [017](017-auto-detect-uid-gid-from-host.md) | Auto-Detect UID/GID from Host System Users | Accepted |
+| [018](018-per-user-variable-paths.md) | Per-User Variable Paths with %U | Accepted |
 
 ## Creating New ADRs
 
