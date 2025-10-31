@@ -224,12 +224,16 @@ add_share() {
 
         # Path
         echo ""
-        echo "Share path options:"
-        echo "  1. Relative path under ./shares/ (e.g., /shares/documents)"
-        echo "  2. Absolute path to existing directory (e.g., /mnt/storage)"
-        read -r -p "Enter path: " path
+        echo "Enter the absolute path to the directory you want to share."
+        echo "Examples: /mnt/storage/media, /storage/scanner, /home/alice/Documents"
+        read -r -p "Absolute path on host: " path
         if [[ -z "${path}" ]]; then
             error "Path cannot be empty"
+        fi
+
+        # Validate it's an absolute path
+        if [[ ! "${path}" =~ ^/ ]]; then
+            error "Path must be absolute (start with /). Got: ${path}"
         fi
 
         # Permissions
@@ -311,24 +315,21 @@ add_share() {
         fi
     fi
 
-    # Check if path is absolute
-    if [[ "${path}" =~ ^/ ]]; then
-        # Absolute path - verify it exists
-        if [[ ! -d "${path}" ]]; then
-            warn "Warning: Absolute path '${path}' does not exist"
-            read -r -p "Create it now? (y/N) " -n 1
-            echo
-            if [[ ${REPLY} =~ ^[Yy]$ ]]; then
-                mkdir -p "${path}" || error "Failed to create directory '${path}'"
-                success "Created directory '${path}'"
-            else
-                warn "Directory not created. Ensure it exists before starting services."
-            fi
-        fi
-    else
-        # Relative path - should be under ./shares/
-        if [[ ! "${path}" =~ ^/shares/ ]]; then
-            warn "Warning: Relative path should typically be /shares/something"
+    # Validate path is absolute (already validated in interactive mode, check for CLI mode)
+    if [[ ! "${path}" =~ ^/ ]]; then
+        error "Path must be absolute (start with /). Got: ${path}"
+    fi
+
+    # Verify path exists
+    if [[ ! -d "${path}" ]]; then
+        warn "Warning: Path '${path}' does not exist"
+        read -r -p "Create it now? (y/N) " -n 1
+        echo
+        if [[ ${REPLY} =~ ^[Yy]$ ]]; then
+            mkdir -p "${path}" || error "Failed to create directory '${path}'"
+            success "Created directory '${path}'"
+        else
+            warn "Directory not created. Ensure it exists before starting services."
         fi
     fi
 
@@ -665,7 +666,7 @@ ENVEOF
     echo ""
     echo "Server Name: $(hostname) File Server"
     echo "User: $first_user"
-    echo "Share: $first_share (at /shares/$first_dir)"
+    echo "Share: $first_share (at ${first_path})"
     echo ""
     echo "Next steps:"
     echo "  • Connect from clients using smb://$(hostname) or afp://$(hostname)"
@@ -927,9 +928,9 @@ User Management:
 
 Share Management:
   add-share [<name> <path> <rw|ro> <users> [comment] [protocols]]
-      Add a new share with protocol selection
+      Add a new share with protocol selection (path must be absolute)
       Interactive wizard mode (recommended): $0 add-share
-      Command-line mode: $0 add-share media /shares/media ro alice,bob "Media Library" "smb,afp"
+      Command-line mode: $0 add-share media /mnt/storage/media ro alice,bob "Media Library" "smb,afp"
       Protocols: smb,afp (both), smb (Windows/Linux only), afp (Mac only)
 
   remove-share <name>
