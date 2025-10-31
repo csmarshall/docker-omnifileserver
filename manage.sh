@@ -269,7 +269,9 @@ add_share() {
         # Path
         echo ""
         echo "Enter the absolute path to the directory you want to share."
-        echo "Examples: /mnt/storage/media, /storage/scanner, /home/alice/Documents"
+        echo "Examples:"
+        echo "  Fixed path: /mnt/storage/media, /storage/scanner"
+        echo "  Per-user path: /storage/users/%U (different path for each user)"
         read -r -p "Absolute path on host: " path
         if [[ -z "${path}" ]]; then
             error "Path cannot be empty"
@@ -364,16 +366,42 @@ add_share() {
         error "Path must be absolute (start with /). Got: ${path}"
     fi
 
-    # Verify path exists
-    if [[ ! -d "${path}" ]]; then
-        warn "Warning: Path '${path}' does not exist"
-        read -r -p "Create it now? (y/N) " -n 1
-        echo
-        if [[ ${REPLY} =~ ^[Yy]$ ]]; then
-            mkdir -p "${path}" || error "Failed to create directory '${path}'"
-            success "Created directory '${path}'"
-        else
-            warn "Directory not created. Ensure it exists before starting services."
+    # Check if path contains variables (for per-user paths)
+    local is_variable_path=false
+    if [[ "${path}" =~ %U ]]; then
+        is_variable_path=true
+        echo ""
+        echo "Detected variable path with %U (per-user path):"
+        echo "  Samba will use: %U (username)"
+        echo "  Netatalk will use: \$u (username)"
+        echo ""
+
+        # Extract and validate base directory
+        local base_path="${path/\/%U/}"
+        if [[ ! -d "${base_path}" ]]; then
+            warn "Warning: Base directory '${base_path}' does not exist"
+            read -r -p "Create it now? (y/N) " -n 1
+            echo
+            if [[ ${REPLY} =~ ^[Yy]$ ]]; then
+                mkdir -p "${base_path}" || error "Failed to create directory '${base_path}'"
+                success "Created base directory '${base_path}'"
+                echo "User subdirectories (e.g., ${base_path}/alice) must be created manually"
+            else
+                warn "Base directory not created. Ensure it and user subdirectories exist."
+            fi
+        fi
+    else
+        # Verify path exists (non-variable paths)
+        if [[ ! -d "${path}" ]]; then
+            warn "Warning: Path '${path}' does not exist"
+            read -r -p "Create it now? (y/N) " -n 1
+            echo
+            if [[ ${REPLY} =~ ^[Yy]$ ]]; then
+                mkdir -p "${path}" || error "Failed to create directory '${path}'"
+                success "Created directory '${path}'"
+            else
+                warn "Directory not created. Ensure it exists before starting services."
+            fi
         fi
     fi
 
@@ -1070,9 +1098,13 @@ User Management:
 Share Management:
   add-share [<name> <path> <rw|ro> <users> [comment] [protocols]]
       Add a new share with protocol selection (path must be absolute)
+      Supports per-user variable paths using %U
       Interactive wizard mode (recommended): $0 add-share
-      Command-line mode: $0 add-share media /mnt/storage/media ro alice,bob "Media Library" "smb,afp"
+      Command-line examples:
+        Fixed path: $0 add-share media /mnt/storage/media ro alice,bob "Media Library" "smb,afp"
+        Per-user path: $0 add-share storage /storage/users/%U rw all "User Storage" "smb,afp"
       Protocols: smb,afp (both), smb (Windows/Linux only), afp (Mac only)
+      %U expands to username: alice sees /storage/users/alice, bob sees /storage/users/bob
 
   remove-share <name>
       Remove a share

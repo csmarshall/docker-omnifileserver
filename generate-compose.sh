@@ -33,11 +33,30 @@ generate_user_envs() {
 }
 
 # Collect absolute paths from shares.conf
+# Skips variable paths (containing %U) since they're dynamic per-user
 collect_absolute_paths() {
     grep -v "^#" "${SHARES_CONF}" | grep -v "^$" | while IFS=: read -r name path permissions users comment protocols; do
+        # Skip variable paths (contain %U for per-user paths)
+        if [[ "${path}" =~ %U ]]; then
+            continue
+        fi
+
         # Check if path is absolute (starts with /)
         if [[ "${path}" =~ ^/ ]]; then
             echo "${path}"
+        fi
+    done | sort -u
+}
+
+# Collect base directories for variable paths
+# Extracts /storage/users from /storage/users/%U
+collect_variable_path_bases() {
+    grep -v "^#" "${SHARES_CONF}" | grep -v "^$" | while IFS=: read -r name path permissions users comment protocols; do
+        # Only process variable paths
+        if [[ "${path}" =~ %U ]]; then
+            # Extract base path by removing /%U suffix
+            local base_path="${path/\/%U/}"
+            echo "${base_path}"
         fi
     done | sort -u
 }
@@ -47,6 +66,11 @@ collect_absolute_paths() {
 generate_volume_mounts() {
     collect_absolute_paths | while read -r abspath; do
         echo "      - ${abspath}:/shares${abspath}"
+    done
+
+    # Also mount base directories for variable paths
+    collect_variable_path_bases | while read -r base_path; do
+        echo "      - ${base_path}:/shares${base_path}"
     done
 }
 
@@ -86,11 +110,14 @@ generate_share_envs() {
         fi
 
         if [[ "${service}" == "samba" ]]; then
+            # Samba uses %U for username variable (keep as-is)
             # Format: sharename;path;browseable;readonly;guest;users;admins;writelist;comment
             echo "      - SAMBA_VOLUME_CONFIG_${name}=${container_path};yes;${readonly};no;${users};;;${comment}"
         else
+            # Netatalk uses $u for username variable (convert %U to $u)
+            local afp_path="${container_path/\%U/\$u}"
             # Format: sharename;path;mode;allow:users
-            echo "      - AFP_VOLUME_CONFIG_${name}=${container_path};${afp_mode};allow:${users}"
+            echo "      - AFP_VOLUME_CONFIG_${name}=${afp_path};${afp_mode};allow:${users}"
         fi
     done
 }
